@@ -7,32 +7,38 @@ def create_tools(self):
     """Create tools that the LLM can call"""
     
     @tool
-    async def click_element(element_type: str, identifier: str, description: str = "") -> str:
+    async def click_element(element_type: str, identifier: str, description: str = "", post_click_selector: str = "") -> str:
         """
         Click on a web element (button, link, etc.)
-        
+
         Args:
             element_type: Type of element ('button', 'link')
             identifier: Text content or unique identifier of the element
             description: Optional description of why clicking this element
-        
+            post_click_selector: Optional CSS selector to wait for after clicking
+
         Returns:
             Success/failure message
         """
         try:
             if not await self.check_page_state():
                 return "Error: Page not accessible"
-            
+
             print(f"🔧 Tool: Clicking {element_type} - {identifier}")
             if description:
                 print(f"   Reason: {description}")
-            
+
             if element_type == "link":
                 links = await self.page.query_selector_all('a')
                 if identifier.isdigit():
                     index = int(identifier)
                     if index < len(links):
                         await links[index].click()
+                        if post_click_selector:
+                            try:
+                                await self.page.wait_for_selector(post_click_selector, timeout=8000)
+                            except:
+                                print(f"⚠️ post_click_selector '{post_click_selector}' not found after click.")
                         await self.wait_for_page_stable()
                         return f"Successfully clicked link at index {index}"
                     return f"Error: No link found at index {index}"
@@ -42,30 +48,41 @@ def create_tools(self):
                         href = await link.get_attribute('href')
                         if (text and identifier.lower() in text.lower()) or (href and identifier in href):
                             await link.click()
+                            if post_click_selector:
+                                try:
+                                    await self.page.wait_for_selector(post_click_selector, timeout=8000)
+                                except:
+                                    print(f"⚠️ post_click_selector '{post_click_selector}' not found after click.")
                             await self.wait_for_page_stable()
                             return f"Successfully clicked link: {text or href}"
 
-            
             elif element_type == "button":
                 buttons = await self.page.query_selector_all('button')
-
                 if identifier.isdigit():
                     index = int(identifier)
                     if index < len(buttons):
                         await buttons[index].click()
+                        if post_click_selector:
+                            try:
+                                await self.page.wait_for_selector(post_click_selector, timeout=8000)
+                            except:
+                                print(f"⚠️ post_click_selector '{post_click_selector}' not found after click.")
                         await self.wait_for_page_stable()
                         return f"Successfully clicked button at index {index}"
                     return f"Error: No button found at index {index}"
-                
-                # First try exact match
+
                 for button in buttons:
                     text = await button.text_content()
                     if text and text.strip().lower() == identifier.lower():
                         await button.click()
+                        if post_click_selector:
+                            try:
+                                await self.page.wait_for_selector(post_click_selector, timeout=8000)
+                            except:
+                                print(f"⚠️ post_click_selector '{post_click_selector}' not found after click.")
                         await self.wait_for_page_stable()
                         return f"Successfully clicked button: {text}"
-                
-                # Then try substring match (excluding third-party)
+
                 for button in buttons:
                     text = await button.text_content()
                     aria = await button.get_attribute("aria-label") or ""
@@ -74,32 +91,33 @@ def create_tools(self):
 
                     if text and identifier.lower() in text.lower():
                         text_lower = text.lower()
-
-                        # Exclude third-party auth buttons
                         if any(third_party in text_lower for third_party in ['apple', 'google', 'facebook', 'microsoft', 'sso', 'continue with']):
                             continue
-
-                        # Prioritize Easy Apply filter buttons
-                        if (
-                            "easy apply" in text_lower 
-                            or "easy apply" in aria.lower()
-                            or "searchFilter_applyWithLinkedin" in btn_id
-                        ) and role == "radio":
+                        if ("easy apply" in text_lower or "easy apply" in aria.lower() or "searchFilter_applyWithLinkedin" in btn_id) and role == "radio":
                             await button.click()
+                            if post_click_selector:
+                                try:
+                                    await self.page.wait_for_selector(post_click_selector, timeout=8000)
+                                except:
+                                    print(f"⚠️ post_click_selector '{post_click_selector}' not found after click.")
                             await self.wait_for_page_stable()
                             self.add_to_history("click_element", f"button: {identifier}", "success")
                             return f"Successfully clicked Easy Apply filter button: {text or aria}"
 
-                        # Fallback to other matches
                         await button.click()
+                        if post_click_selector:
+                            try:
+                                await self.page.wait_for_selector(post_click_selector, timeout=8000)
+                            except:
+                                print(f"⚠️ post_click_selector '{post_click_selector}' not found after click.")
                         await self.wait_for_page_stable()
                         self.add_to_history("click_element", f"button: {identifier}", "success")
                         return f"Successfully clicked button: {text}"
-            
+
             error_msg = f"Error: Could not find {element_type} with identifier '{identifier}'"
             self.add_to_history("click_element", f"{element_type}: {identifier}", "failed")
             return error_msg
-            
+
         except Exception as e:
             return f"Error clicking {element_type}: {str(e)}"
 

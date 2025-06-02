@@ -364,16 +364,31 @@ class LinkedInJobsNavigator:
                     print(f"Page Title: {elements_info['page_title']}")
                     print(f"Found: {elements_info['total_buttons']} buttons, {elements_info['total_links']} links, {elements_info['total_inputs']} inputs")
                     
-                    current_url = elements_info['current_url'].lower()
+                    current_url = elements_info['current_url']
+                    
                     if "linkedin.com/jobs/search" in current_url:
-                        if self.current_step != "filter_easy_apply":
-                            print("✅ Reached LinkedIn Jobs Search Results page — ready for Easy Apply filter.")
-                            self.current_step = "filter_easy_apply"
-                    elif "linkedin.com/jobs" in current_url and self.current_step != "jobs_section":
-                        print("🎉 Reached LinkedIn Jobs landing page.")
-                        self.current_step = "jobs_section"
+                        if "f_AL=true" in current_url:
+                            if self.current_step != "Applying_Jobs":
+                                print("🚀 Easy Apply filter applied — ready to start applying to jobs.")
+                                self.current_step = "Applying_Jobs"
+                        else:
+                            if self.current_step != "filter_easy_apply":
+                                print("✅ Reached LinkedIn Jobs Search Results page — ready for Easy Apply filter.")
+                                self.current_step = "filter_easy_apply"
 
-                            
+                    elif "linkedin.com/jobs" in current_url:
+                        if self.current_step != "jobs_section":
+                            print("🎉 Reached LinkedIn Jobs landing page.")
+                            self.current_step = "jobs_section"
+
+                    elif "linkedin.com/feed" in current_url or "linkedin.com/home" in current_url:
+                        if self.current_step != "homepage":
+                            print("🏠 At LinkedIn homepage.")
+                            self.current_step = "homepage"
+
+                    else:
+                        print(f"🌐 Unknown page context for URL: {current_url}")
+
                     # Handle verification page
                     if self.is_verification_page(elements_info):
                         await self.wait_for_human_verification(elements_info)
@@ -385,10 +400,12 @@ class LinkedInJobsNavigator:
                         "Then, in the Jobs section, use the fill_input_field tool to enter the job title and location. "
                         "After filling both fields, if a visible and enabled search button is found, use click_element tool to click it. "
                         "If no such button is found or clickable, simulate pressing the Enter key in the input field instead to trigger the search. "
-                        "After pressing Enter, look for Easy Apply Filter button and press it to apply filter for searched Jobs. "
-                        "Do not ask the user for any inputs. "
-                        "Use tools for all actions."
+                        "After triggering the search, wait for the search results page to load. "
+                        "Then, look for the Easy Apply Filter button and press it to apply the filter for searched jobs. "
+                        "Once the Easy Apply filter is successfully applied (confirmed by f_AL=true in the URL), proceed to the next step: start applying to jobs. "
+                        "Do not ask the user for any inputs. Use tools for all actions."
                     )
+
 
                     print("")
                     print("Current Step", self.current_step)
