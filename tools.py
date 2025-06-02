@@ -48,6 +48,14 @@ def create_tools(self):
             
             elif element_type == "button":
                 buttons = await self.page.query_selector_all('button')
+
+                if identifier.isdigit():
+                    index = int(identifier)
+                    if index < len(buttons):
+                        await buttons[index].click()
+                        await self.wait_for_page_stable()
+                        return f"Successfully clicked button at index {index}"
+                    return f"Error: No button found at index {index}"
                 
                 # First try exact match
                 for button in buttons:
@@ -60,11 +68,29 @@ def create_tools(self):
                 # Then try substring match (excluding third-party)
                 for button in buttons:
                     text = await button.text_content()
+                    aria = await button.get_attribute("aria-label") or ""
+                    role = await button.get_attribute("role") or ""
+                    btn_id = await button.get_attribute("id") or ""
+
                     if text and identifier.lower() in text.lower():
                         text_lower = text.lower()
+
+                        # Exclude third-party auth buttons
                         if any(third_party in text_lower for third_party in ['apple', 'google', 'facebook', 'microsoft', 'sso', 'continue with']):
                             continue
-                        
+
+                        # Prioritize Easy Apply filter buttons
+                        if (
+                            "easy apply" in text_lower 
+                            or "easy apply" in aria.lower()
+                            or "searchFilter_applyWithLinkedin" in btn_id
+                        ) and role == "radio":
+                            await button.click()
+                            await self.wait_for_page_stable()
+                            self.add_to_history("click_element", f"button: {identifier}", "success")
+                            return f"Successfully clicked Easy Apply filter button: {text or aria}"
+
+                        # Fallback to other matches
                         await button.click()
                         await self.wait_for_page_stable()
                         self.add_to_history("click_element", f"button: {identifier}", "success")

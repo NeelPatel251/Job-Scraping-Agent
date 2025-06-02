@@ -197,7 +197,7 @@ class LinkedInJobsNavigator:
         
         return any(verification_indicators)
 
-    async def wait_for_human_verification(self):
+    async def wait_for_human_verification(self, elements_info):
         """Handle human verification step"""
         print("\n" + "="*80)
         print("SECURITY VERIFICATION DETECTED")
@@ -364,23 +364,41 @@ class LinkedInJobsNavigator:
                     print(f"Page Title: {elements_info['page_title']}")
                     print(f"Found: {elements_info['total_buttons']} buttons, {elements_info['total_links']} links, {elements_info['total_inputs']} inputs")
                     
-                    # Check if we've reached the jobs section
-                    if 'jobs' in elements_info['current_url'].lower() and 'linkedin.com' in elements_info['current_url']:
-                        if self.current_step != "jobs_section":
-                            print("🎉 Successfully reached LinkedIn Jobs section!")
-                            self.current_step = "jobs_section"
+                    current_url = elements_info['current_url'].lower()
+                    if "linkedin.com/jobs/search" in current_url:
+                        if self.current_step != "filter_easy_apply":
+                            print("✅ Reached LinkedIn Jobs Search Results page — ready for Easy Apply filter.")
+                            self.current_step = "filter_easy_apply"
+                    elif "linkedin.com/jobs" in current_url and self.current_step != "jobs_section":
+                        print("🎉 Reached LinkedIn Jobs landing page.")
+                        self.current_step = "jobs_section"
+
                             
                     # Handle verification page
                     if self.is_verification_page(elements_info):
                         await self.wait_for_human_verification(elements_info)
                         continue
                     
+                    goal = (
+                        "Navigate LinkedIn from the homepage to the Jobs section. "
+                        "First, sign in using the provided email and password by filling the login form. "
+                        "Then, in the Jobs section, use the fill_input_field tool to enter the job title and location. "
+                        "After filling both fields, if a visible and enabled search button is found, use click_element tool to click it. "
+                        "If no such button is found or clickable, simulate pressing the Enter key in the input field instead to trigger the search. "
+                        "After pressing Enter, look for Easy Apply Filter button and press it to apply filter for searched Jobs. "
+                        "Do not ask the user for any inputs. "
+                        "Use tools for all actions."
+                    )
+
+                    print("")
+                    print("Current Step", self.current_step)
+
                     # Use LLM with tools
                     print("\n🤖 Asking LLM to determine next action...")
                     action_result = await ask_llm_for_action_with_tools(
                         self,
                         elements_info, 
-                        "Navigate to LinkedIn Jobs section and type job title and location to see jobs", 
+                        goal, 
                         self.current_step
                     )
                     

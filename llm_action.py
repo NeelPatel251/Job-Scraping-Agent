@@ -12,8 +12,7 @@ model = ChatGoogleGenerativeAI(
 
 
 async def ask_llm_for_action_with_tools(navigator_instance, elements_info, goal, current_step):
-    """Ask LLM to use tools to perform actions"""
-
+    """Router: Dispatches to the appropriate sub-agent based on current_step"""
     if navigator_instance.is_verification_page(elements_info):
         return "human_verification"
 
@@ -22,114 +21,146 @@ async def ask_llm_for_action_with_tools(navigator_instance, elements_info, goal,
         return await navigator_instance.execute_fallback_action(elements_info, current_step)
 
     try:
-        tools = create_tools(navigator_instance)
-        model_with_tools = model.bind_tools(tools)
-
-        history_summary = ""
-        if navigator_instance.action_history:
-            history_summary = "RECENT ACTIONS TAKEN:\n"
-            for action in navigator_instance.action_history[-5:]:
-                history_summary += f"Step {action['step']}: {action['action_type']} - {action['details']} -> {action['result']}\n"
-            history_summary += "\nIMPORTANT: Do not repeat actions that were already successful!\n"
-
-        system_message = SystemMessage(content=f"""
-            You are an AI assistant helping navigate LinkedIn to reach the Jobs section.
-
-            CURRENT STEP: {current_step}
-            GOAL: {goal}
-            CURRENT URL: {elements_info['current_url']}
-            PAGE TITLE: {elements_info['page_title']}
-
-            {history_summary}
-
-            AVAILABLE PAGE ELEMENTS:
-            BUTTONS ({elements_info['total_buttons']} total, showing first 15):
-            {json.dumps(elements_info['buttons'], indent=2)}
-
-            LINKS ({elements_info['total_links']} total, showing first 20):
-            {json.dumps(elements_info['links'], indent=2)}
-
-            INPUTS ({elements_info['total_inputs']} total):
-            {json.dumps(elements_info['inputs'], indent=2)}
-
-            Note:
-            Do not go to Job link before sign up
-
-            CRITICAL RULES:
-                1. Check the action history - do not repeat successful actions!
-                2. If email was already filled successfully, move to password
-                3. If both email and password were filled, click sign in button
-                4. Never click third-party login buttons (Google, Apple, etc.)
-                5. Always use tools to fill input fields when step is "search_jobs" – never ask the user for input.
-                6. After filling both job title and location fields, always simulate Enter keypress using press_enter_on_input on the location input
-
-
-            NAVIGATION WORKFLOW:
-                1. If on homepage and not signed in -> click "Sign in" link
-                2. If on login page -> fill email field first, then password field, then click sign in button
-                3. If signed in -> navigate to Jobs section
-                4. If in Jobs section and step is "jobs_section" -> advance to step "search_jobs"
-                5. If step is "search_jobs" -> use the fill_input_field tool to fill both the job title and the location inputs. Then simulate pressing Enter by clicking the search button or sending Enter key event.
-                6. If step is "fill_job_title" -> fill job title field only
-                7. If step is "fill_location" -> fill location field only
-                8. If step is "search_submitted" -> click on first job link
-                9. If step is "browse_jobs" -> look for "Easy Apply" button and click it
-
-            Use the available tools to perform the next logical action. Choose ONE action at a time.
-        """)
-
-        human_message = HumanMessage(content=f"Based on the current page state, what action should I take next to reach the LinkedIn Jobs section? Current step: {current_step}")
-
-        response = model_with_tools.invoke([system_message, human_message])
-
-        if response.tool_calls:
-            print(f"🤖 LLM decided to use tool: {response.tool_calls[0]['name']}")
-            print(f"   Arguments: {response.tool_calls[0]['args']}")
-
-            tool_name = response.tool_calls[0]['name']
-            tool_args = response.tool_calls[0]['args']
-
-            for tool in tools:
-                if tool.name == tool_name:
-                    try:
-                        result = await tool.ainvoke(tool_args) if hasattr(tool, 'ainvoke') else tool.invoke(tool_args)
-                        print(f"🔧 Tool result: {result}")
-
-                        # Step logic
-                        if tool_name == "fill_input_field":
-                            field_type = (tool_args.get("field_type") or "").lower()
-                            if "email" in field_type:
-                                navigator_instance.current_step = "fill_password"
-                            elif "password" in field_type:
-                                navigator_instance.current_step = "submit_login"
-                            elif "job_title" in field_type or "title" in field_type:
-                                navigator_instance.current_step = "fill_location"
-                            elif "location" in field_type:
-                                navigator_instance.current_step = "search_submitted"
-
-                        elif tool_name == "click_element":
-                            details = str(tool_args).lower()
-                            if "sign in" in details:
-                                if "link" in details:
-                                    navigator_instance.current_step = "login_page"
-                                elif "button" in details:
-                                    navigator_instance.current_step = "logged_in"
-                            elif "job" in details:
-                                navigator_instance.current_step = "jobs_section"
-
-                        elif tool_name == "navigate_to_url" and "jobs" in str(tool_args).lower():
-                            navigator_instance.current_step = "jobs_section"
-
-                        return "tool_executed"
-
-                    except Exception as tool_error:
-                        print(f"Error executing tool {tool_name}: {tool_error}")
-                        return await navigator_instance.execute_fallback_action(elements_info, current_step)
-
+        if current_step.startswith("login") or current_step.startswith("fill") or current_step == "submit_login":
+            return await ask_login_agent(navigator_instance, elements_info, goal, current_step)
+        elif current_step.startswith("jobs_section"):
+            return await ask_jobs_agent(navigator_instance, elements_info, goal, current_step)
+        elif current_step.startswith("search_jobs") or current_step in ["fill_job_title", "fill_location", "search_submitted"]:
+            return await ask_search_agent(navigator_instance, elements_info, goal, current_step)
+        elif current_step == "filter_easy_apply":
+            return await ask_filter_agent(navigator_instance, elements_info, goal, current_step)
         else:
-            print(f"🤖 LLM response (no tool): {response.content}")
-            return await navigator_instance.execute_fallback_action(elements_info, current_step)
+            return await ask_generic_agent(navigator_instance, elements_info, goal, current_step)
 
     except Exception as e:
-        print(f"Error with LLM tool calling: {e}")
+        print(f"❌ Sub-agent error: {e}")
         return await navigator_instance.execute_fallback_action(elements_info, current_step)
+
+
+async def ask_login_agent(navigator, elements_info, goal, step):
+    return await _invoke_llm_tool_use(
+        navigator, elements_info, goal, step,
+        agent_role="LoginAgent",
+        extra_instruction="""
+        1. Fill email input field first.
+        2. Then fill password.
+        3. Finally, click the "Sign in" button.
+        4. Never click 'Continue with Google' or similar.
+        """
+    )
+
+async def ask_jobs_agent(navigator, elements_info, goal, step):
+    return await _invoke_llm_tool_use(
+        navigator, elements_info, goal, step,
+        agent_role="JobsSectionAgent",
+        extra_instruction="""
+        Your goal is to detect whether we are in the Jobs section and help transition to the 'search_jobs' step.
+        If already in Jobs section, set current_step to 'search_jobs'.
+        """
+    )
+
+async def ask_search_agent(navigator, elements_info, goal, step):
+    return await _invoke_llm_tool_use(
+        navigator, elements_info, goal, step,
+        agent_role="SearchAgent",
+        extra_instruction=f"""
+        JOB SEARCH PARAMETERS:
+        - Job Title: {JOB_TITLE}
+        - Location: {JOB_LOCATION}
+
+        Use 'fill_input_field' for both fields, then simulate pressing Enter by clicking a search button.
+        Do not ask the user for these values.
+        """
+    )
+
+async def ask_filter_agent(navigator, elements_info, goal, step):
+    return await _invoke_llm_tool_use(
+        navigator, elements_info, goal, step,
+        agent_role="FilterAgent",
+        extra_instruction="""
+        Your task is to enable the 'Easy Apply' filter on the job search results page.
+
+        STEPS:
+        - Look for buttons or links with labels like "Easy Apply", "Easy apply", or containing the word "easy".
+        - If a button labeled "Easy Apply" is found, click it using the appropriate tool.
+        - Only apply the filter once.
+
+        If the filter is already active, return without clicking anything.
+        """
+    )
+
+
+async def ask_generic_agent(navigator, elements_info, goal, step):
+    return await _invoke_llm_tool_use(
+        navigator, elements_info, goal, step,
+        agent_role="GenericAgent",
+        extra_instruction="""
+        Use your best judgment to determine the next action using available tools.
+        Do not perform login or job search actions unless clearly required.
+        Make progress toward the overall goal.
+        """
+    )
+
+
+async def _invoke_llm_tool_use(navigator, elements_info, goal, step, agent_role, extra_instruction=""):
+    tools = create_tools(navigator)
+    model_with_tools = model.bind_tools(tools)
+
+    # Construct action history
+    history = ""
+    if navigator.action_history:
+        history = "RECENT ACTIONS:\n" + "\n".join([
+            f"Step {a['step']}: {a['action_type']} - {a['details']} -> {a['result']}"
+            for a in navigator.action_history[-5:]
+        ]) + "\nDo not repeat successful actions.\n"
+
+    # System prompt
+    system_message = SystemMessage(content=f"""
+    You are {agent_role}, responsible for the step: {step}
+    
+    GOAL: {goal}
+    CURRENT STEP: {step}
+    CURRENT URL: {elements_info['current_url']}
+    PAGE TITLE: {elements_info['page_title']}
+    
+    {extra_instruction}
+    {history}
+    If a tool call results in an error (e.g., clicking the Search button fails or the button is not found or visible),
+    try calling another appropriate tool such as pressing Enter on the input field instead.
+
+    AVAILABLE PAGE ELEMENTS:
+    BUTTONS ({elements_info['total_buttons']} total, first 15 shown):
+    {json.dumps(elements_info['buttons'], indent=2)}
+    
+    LINKS ({elements_info['total_links']} total, first 20 shown):
+    {json.dumps(elements_info['links'], indent=2)}
+    
+    INPUTS ({elements_info['total_inputs']} total):
+    {json.dumps(elements_info['inputs'], indent=2)}
+
+    RULES:
+    - Use ONE tool call per response
+    - Always use tools, never respond conversationally
+    """)
+
+    human_message = HumanMessage(content=f"What action should I take next? Step: {step}")
+
+    response = model_with_tools.invoke([system_message, human_message])
+
+    if response.tool_calls:
+        tool_name = response.tool_calls[0]['name']
+        tool_args = response.tool_calls[0]['args']
+        print(f"🤖 Tool selected: {tool_name}, Args: {tool_args}")
+        for tool in tools:
+            if tool.name == tool_name:
+                try:
+                    result = await tool.ainvoke(tool_args) if hasattr(tool, 'ainvoke') else tool.invoke(tool_args)
+                    print(f"🔧 Tool result: {result}")
+                    # Optional: set navigator.current_step based on logic
+                    return "tool_executed"
+                except Exception as tool_err:
+                    print(f"⚠️ Tool failed: {tool_err}")
+                    return await navigator.execute_fallback_action(elements_info, step)
+
+    print(f"🤖 No tool used. Response: {response.content}")
+    return await navigator.execute_fallback_action(elements_info, step)
