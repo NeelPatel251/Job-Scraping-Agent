@@ -3,6 +3,7 @@ from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain_core.messages import HumanMessage, SystemMessage
 from config import GEMINI_API_KEY, JOB_LOCATION, JOB_TITLE
 from tools import create_tools
+from job_agent import apply_jobs_with_integrated_gpt4
 
 model = ChatGoogleGenerativeAI(
     model="gemini-2.5-flash-preview-04-17",
@@ -29,14 +30,15 @@ async def ask_llm_for_action_with_tools(navigator_instance, elements_info, goal,
             return await ask_search_agent(navigator_instance, elements_info, goal, current_step)
         elif current_step == "filter_easy_apply":
             return await ask_filter_agent(navigator_instance, elements_info, goal, current_step)
-        elif current_step.startswith("easy_apply"):
-            return await ask_easy_apply_agent(navigator_instance, elements_info, goal, current_step)
+        elif current_step == "Applying_Jobs":
+            current_url = elements_info["current_url"]
+            return await apply_jobs_with_integrated_gpt4(navigator_instance, elements_info, current_url)
         else:
             return await ask_generic_agent(navigator_instance, elements_info, goal, current_step)
 
     except Exception as e:
         print(f"❌ Sub-agent error: {e}")
-        return await navigator_instance.execute_fallback_action(elements_info, current_step)
+        return "⚠️ No fallback action defined. Skipping this step or retrying later."
 
 
 async def ask_login_agent(navigator, elements_info, goal, step):
@@ -91,38 +93,6 @@ async def ask_filter_agent(navigator, elements_info, goal, step):
         """
     )
 
-async def ask_easy_apply_agent(navigator, elements_info, goal, step):
-    return await _invoke_llm_tool_use(
-        navigator, elements_info, goal, step,
-        agent_role="EasyApplyAgent",
-        extra_instruction="""
-            You are an intelligent LinkedIn Easy Apply agent, capable of reasoning from full page structure.
-
-            🎯 GOAL:
-            Apply to jobs one by one using the "Easy Apply" process ONLY. You must inspect the current page to determine what to do next.
-
-            🧠 BEHAVIOR:
-            - Read the full DOM and decide your next step toward applying for a job.
-            - If on the job listings page, look for links to job postings and click one.
-            - If on a job detail view (same URL), search for the 'Easy Apply' button.
-            - If found, click it and complete the form in multiple steps.
-            - If no Easy Apply is found, return to the job list.
-
-            🏗️ RECOGNIZE THESE DOM CUES:
-            - Easy Apply button: text = "Easy Apply", aria-label includes "Easy Apply", or id = "jobs-apply-button-id"
-            - Application form: look for buttons like "Next", "Continue", "Review", or "Submit"
-            - Confirmation: look for a button that says "Done"
-
-            ⛔ RULES:
-            - Do NOT click multiple job links at once.
-            - Do NOT leave a job before deciding if it's skippable or apply-able.
-            - Do NOT repeat the same job.
-            - Only ONE tool per turn — continue application across multiple turns if needed.
-
-            Think step-by-step like a helpful assistant trying to finish each job application before moving to the next.
-        """
-    )
-
 async def ask_generic_agent(navigator, elements_info, goal, step):
     return await _invoke_llm_tool_use(
         navigator, elements_info, goal, step,
@@ -133,7 +103,6 @@ async def ask_generic_agent(navigator, elements_info, goal, step):
         Make progress toward the overall goal.
         """
     )
-
 
 async def _invoke_llm_tool_use(navigator, elements_info, goal, step, agent_role, extra_instruction=""):
     tools = create_tools(navigator)
@@ -193,7 +162,7 @@ async def _invoke_llm_tool_use(navigator, elements_info, goal, step, agent_role,
                     return "tool_executed"
                 except Exception as tool_err:
                     print(f"⚠️ Tool failed: {tool_err}")
-                    return await navigator.execute_fallback_action(elements_info, step)
+                    return "tool_failed"
 
     print(f"🤖 No tool used. Response: {response.content}")
-    return await navigator.execute_fallback_action(elements_info, step)
+    return "no_tool_used"

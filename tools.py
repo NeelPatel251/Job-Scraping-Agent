@@ -121,6 +121,7 @@ def create_tools(self):
         except Exception as e:
             return f"Error clicking {element_type}: {str(e)}"
 
+
     @tool
     async def fill_input_field(field_identifier: str, value: str, field_type: str = "") -> str:
         """
