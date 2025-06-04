@@ -57,7 +57,11 @@ def create_tools(self):
                             return f"Successfully clicked link: {text or href}"
 
             elif element_type == "button":
+                
+                await self.page.mouse.wheel(0, 1000)
+                await self.page.wait_for_timeout(500) 
                 buttons = await self.page.query_selector_all('button')
+
                 if identifier.isdigit():
                     index = int(identifier)
                     if index < len(buttons):
@@ -73,7 +77,9 @@ def create_tools(self):
 
                 for button in buttons:
                     text = await button.text_content()
-                    if text and text.strip().lower() == identifier.lower():
+                    if text and text.strip().lower() == identifier.lower(): 
+                        
+                        await button.scroll_into_view_if_needed()
                         await button.click()
                         if post_click_selector:
                             try:
@@ -81,7 +87,7 @@ def create_tools(self):
                             except:
                                 print(f"⚠️ post_click_selector '{post_click_selector}' not found after click.")
                         await self.wait_for_page_stable()
-                        return f"Successfully clicked button: {text}"
+                        return f"Successfully clicked button with line 84: {text}"
 
                 for button in buttons:
                     text = await button.text_content()
@@ -93,6 +99,8 @@ def create_tools(self):
                         text_lower = text.lower()
                         if any(third_party in text_lower for third_party in ['apple', 'google', 'facebook', 'microsoft', 'sso', 'continue with']):
                             continue
+
+                        # Easy Apply filter button in sidebar (role=radio)
                         if ("easy apply" in text_lower or "easy apply" in aria.lower() or "searchFilter_applyWithLinkedin" in btn_id) and role == "radio":
                             await button.click()
                             if post_click_selector:
@@ -104,6 +112,25 @@ def create_tools(self):
                             self.add_to_history("click_element", f"button: {identifier}", "success")
                             return f"Successfully clicked Easy Apply filter button: {text or aria}"
 
+                        # Job detail page Easy Apply button (text is nested in a span)
+                        if "easy apply" == identifier.lower():
+                            span = await button.query_selector("span.artdeco-button__text")
+                            if span:
+                                span_text = (await span.inner_text()).strip().lower()
+
+                                if "easy apply" in span_text:
+                                    await button.click()
+                                    if post_click_selector:
+                                        try:
+                                            await self.page.wait_for_selector(post_click_selector, timeout=8000)
+                                        except:
+                                            print(f"⚠️ post_click_selector '{post_click_selector}' not found after click.")
+                                    await self.wait_for_page_stable()
+                                    self.add_to_history("click_element", f"button: {identifier}", "success")
+                                    return f"Successfully clicked job-level Easy Apply button"
+
+                    # fallback click if identifier matches and isn't Easy Apply
+                    if text and identifier.lower() in text.lower():
                         await button.click()
                         if post_click_selector:
                             try:
@@ -113,6 +140,7 @@ def create_tools(self):
                         await self.wait_for_page_stable()
                         self.add_to_history("click_element", f"button: {identifier}", "success")
                         return f"Successfully clicked button: {text}"
+
 
             error_msg = f"Error: Could not find {element_type} with identifier '{identifier}'"
             self.add_to_history("click_element", f"{element_type}: {identifier}", "failed")
@@ -271,7 +299,7 @@ def create_tools(self):
             
         except Exception as e:
             return f"Error navigating to URL: {str(e)}"
-
+        
     @tool
     async def wait_and_observe(seconds: int = 5, reason: str = "") -> str:
         """

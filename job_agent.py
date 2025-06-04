@@ -90,6 +90,8 @@ async def apply_jobs_with_integrated_gpt4(navigator, elements_info, job_list_url
 
     job_links = filter_job_links_locally(job_links)
 
+    print("Total Job Links Found : ", len(job_links))
+
     for job_idx, job_link in enumerate(job_links):
         print(f"\n➡️ Processing job #{job_idx + 1}")
 
@@ -98,20 +100,21 @@ async def apply_jobs_with_integrated_gpt4(navigator, elements_info, job_list_url
             ROLE: Navigation Agent for Job Details
 
             OBJECTIVE:
-            Your task is to navigate to a LinkedIn job detail page by clicking the job card link.
+            Navigate to a LinkedIn job detail page using the provided URL.
 
             STRATEGY:
-            - Use the available tools to interact with the browser.
-            - Use exactly one tool call to click the job card element corresponding to the provided URL.
+            - Navigate to provided Job Link or URL.     
+            - Do NOT attempt to click anything.
+            - Do not apply to the job — only open the job detail page.
 
             CONSTRAINTS:
+            - Use one tool call per response.
             - Do NOT reply with explanations or summaries.
-            - Make only one tool call per response.
-            - Do not apply to jobs here — just navigate to the job page.
 
             TARGET JOB LINK:
             {job_link}
         """)
+
         human_message_click = HumanMessage(content="Click the job card to open job detail page.")
 
         response_click = model_click.invoke([system_message_click, human_message_click])
@@ -135,8 +138,11 @@ async def apply_jobs_with_integrated_gpt4(navigator, elements_info, job_list_url
         await asyncio.sleep(2)
 
         # --- LLM 2: Apply to the job ---
+        history = []
         while True:
             elements_info = await navigator.get_page_elements()
+
+            recent_tool_history = "\n".join(history[-3:]) or "None"
 
             system_message_apply = SystemMessage(content=f"""
                 ROLE: Job Application Agent
@@ -146,24 +152,31 @@ async def apply_jobs_with_integrated_gpt4(navigator, elements_info, job_list_url
 
                 STRATEGY:
                 1. Look for a button labeled "Easy Apply".
-                2. If available, click it to begin application.
+                2. If available, click it to begin the application.
                 3. If not present, return to the job list page at: {job_list_url}.
-                4. If you begin application, proceed step-by-step (Next, Submit, etc.).
+                4. If you begin the application, proceed step-by-step (Next, Submit, etc.).
                 5. When application completes or cannot proceed, return to job list page.
 
-                RULES:
+                TOOL USAGE INSTRUCTIONS:
                 - Use one tool per response.
-                - Do NOT answer with explanations.
-                - Use only tools like click, navigate_to_url, fill_field, etc.
+                - Do NOT provide explanations.
+                - If a tool action fails (e.g., click_element fails), try using a different tool to overcome the issue.
+                - Be adaptive: retry with a different approach if the first one didn’t work.
 
-                IMPORTANT:
-                - Each response must make one tool call.
-                - When you're back on the job list page, stop this job and proceed to next.
+                CONTEXT:
+                - Tool failures will be reported below for your reasoning.
+                - Recent tool history:
+                {recent_tool_history or "None"}
+
+                RULES:
+                - Each response must make exactly one tool call.
                 - Be robust to missing buttons or unexpected content.
+                - When you're back on the job list page, stop this job and proceed to next.
 
                 CURRENT JOB: #{job_idx + 1}
                 CURRENT PAGE: Job Detail Page or Application Modal
             """)
+
             human_message_apply = HumanMessage(content=f"DOM snapshot: {json.dumps(elements_info)[:6000]}")
 
             response_apply = await model_apply.ainvoke([system_message_apply, human_message_apply])
@@ -175,14 +188,21 @@ async def apply_jobs_with_integrated_gpt4(navigator, elements_info, job_list_url
             tool_name = tool_call['name']
             tool_args = tool_call['args']
 
+            print("LLM Decision:")
+            print(f"🤖 Tool selected: {tool_name}, Args: {tool_args}")
+
             tool = next((t for t in tools if t.name == tool_name), None)
             if tool:
                 try:
-                    await tool.ainvoke(tool_args)
+                    result = await tool.ainvoke(tool_args)
+                    print(f"🔧 Tool result: {result}")
                     print(f"✅ Tool executed: {tool_name}")
+                    history.append(f"{tool_name}({tool_args}) → {result}")
+                    
                     await asyncio.sleep(2)
                 except Exception as e:
                     print(f"❌ Tool execution failed: {e}")
+                    history.append(f"{tool_name}({tool_args}) → ERROR: {str(e)}")
                     break
 
                 # Check if we've navigated back to job list
@@ -191,6 +211,7 @@ async def apply_jobs_with_integrated_gpt4(navigator, elements_info, job_list_url
                     break
             else:
                 print(f"❌ Tool not found: {tool_name}")
+                history.append(f"{tool_name}({tool_args}) → ERROR: Tool not found")
                 break
 
     return "done_applying"
