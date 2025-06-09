@@ -1,21 +1,31 @@
 import asyncio
 import json
 from langchain_core.messages import HumanMessage, SystemMessage
-from langchain_openai import ChatOpenAI
+from langchain_google_genai import ChatGoogleGenerativeAI
 from tools import create_tools
-from config import OPENAI_API_KEY
+from config import GEMINI_API_KEY
+import re
 
-# Two separate LLM instances
-gpt4_model_1 = ChatOpenAI(model="gpt-4.1", api_key=OPENAI_API_KEY) if OPENAI_API_KEY else None
-gpt4_model_2 = ChatOpenAI(model="gpt-4.1", api_key=OPENAI_API_KEY) if OPENAI_API_KEY else None
+# Two separate LLM instances using Gemini
+gemini_model_1 = ChatGoogleGenerativeAI(
+    model="gemini-2.5-flash-preview-04-17", 
+    google_api_key=GEMINI_API_KEY,
+    temperature=0.1
+) if GEMINI_API_KEY else None
+
+gemini_model_2 = ChatGoogleGenerativeAI(
+    model="gemini-2.5-flash-preview-04-17", 
+    google_api_key=GEMINI_API_KEY,
+    temperature=0.1
+) if GEMINI_API_KEY else None
 
 async def filter_job_links_with_llm(elements_info):
-    if not gpt4_model_1:
-        print("No GPT-4 model available for filtering links.")
+    if not gemini_model_1:
+        print("No Gemini model available for filtering links.")
         return []
 
     links = elements_info.get("links", [])
-    model = gpt4_model_1
+    model = gemini_model_1
 
     system_msg = SystemMessage(content="""
         You are a smart filtering assistant.
@@ -32,6 +42,7 @@ async def filter_job_links_with_llm(elements_info):
         - Sign-in, help, or menu pages
 
         FORMAT: Return the list of job URLs as a JSON array of strings.
+        IMPORTANT: Do NOT wrap it in markdown or code blocks like ```json.
     """)
 
     human_msg = HumanMessage(content=f"""
@@ -39,16 +50,25 @@ async def filter_job_links_with_llm(elements_info):
 
         {json.dumps(links, indent=2)}
 
-        Return ONLY job links as a JSON array of hrefs.
+        Return ONLY job links as a JSON array of hrefs (like ["/jobs/view/...", ...]).
+        Do NOT wrap the output in triple backticks.
     """)
 
-    response = model.invoke([system_msg, human_msg])
-
     try:
-        filtered = json.loads(response.content)
+        response = await model.ainvoke([system_msg, human_msg])
+        raw_output = response.content.strip()
+
+        # Remove markdown code block if present (Gemini often adds these)
+        if raw_output.startswith("```"):
+            raw_output = re.sub(r"^```(?:json)?\s*", "", raw_output)
+            raw_output = re.sub(r"\s*```$", "", raw_output)
+
+        filtered = json.loads(raw_output)
         return filtered if isinstance(filtered, list) else []
+
     except Exception as e:
         print(f"❌ Failed to parse filtered links: {e}")
+        print(f"🔎 Raw output was: {repr(response.content)}")
         return []
 
 def filter_job_links_locally(raw_links: list[str]) -> list[str]:
@@ -72,15 +92,15 @@ def filter_job_links_locally(raw_links: list[str]) -> list[str]:
 
     return job_links
 
-async def apply_jobs_with_integrated_gpt4(navigator, elements_info, job_list_url):
+async def apply_jobs_with_integrated_gemini(navigator, elements_info, job_list_url):
 
-    if not gpt4_model_1 or not gpt4_model_2:
-        print("GPT-4 models not available.")
+    if not gemini_model_1 or not gemini_model_2:
+        print("Gemini models not available.")
         return "no_model"
 
     tools = create_tools(navigator)
-    model_click = gpt4_model_1.bind_tools(tools)
-    model_apply = gpt4_model_2.bind_tools(tools)
+    model_click = gemini_model_1.bind_tools(tools)
+    model_apply = gemini_model_2.bind_tools(tools)
 
     print("Filtering Job links ....")
     job_links = await filter_job_links_with_llm(elements_info)
@@ -88,9 +108,9 @@ async def apply_jobs_with_integrated_gpt4(navigator, elements_info, job_list_url
         print("⚠️ No job links found after filtering.")
         return "no_jobs_found"
 
+    print("Total Job Links Found Before Filtering locally : ", len(job_links))
     job_links = filter_job_links_locally(job_links)
-
-    print("Total Job Links Found : ", len(job_links))
+    print("Total Job Links Found After Filtering locally : ", len(job_links))
 
     for job_idx, job_link in enumerate(job_links):
         print(f"\n➡️ Processing job #{job_idx + 1}")
@@ -117,22 +137,26 @@ async def apply_jobs_with_integrated_gpt4(navigator, elements_info, job_list_url
 
         human_message_click = HumanMessage(content="Click the job card to open job detail page.")
 
-        response_click = model_click.invoke([system_message_click, human_message_click])
-        if response_click.tool_calls:
-            tool_call = response_click.tool_calls[0]
-            tool_name = tool_call['name']
-            tool_args = tool_call['args']
+        try:
+            response_click = await model_click.ainvoke([system_message_click, human_message_click])
+            if response_click.tool_calls:
+                tool_call = response_click.tool_calls[0]
+                tool_name = tool_call['name']
+                tool_args = tool_call['args']
 
-            tool = next((t for t in tools if t.name == tool_name), None)
-            if tool:
-                try:
-                    await tool.ainvoke(tool_args)
-                    print(f"✅ Job link clicked: {job_link}")
-                except Exception as e:
-                    print(f"❌ Failed to click job link: {e}")
-                    continue
-        else:
-            print("❌ No tool call made for clicking job.")
+                tool = next((t for t in tools if t.name == tool_name), None)
+                if tool:
+                    try:
+                        await tool.ainvoke(tool_args)
+                        print(f"✅ Job link clicked: {job_link}")
+                    except Exception as e:
+                        print(f"❌ Failed to click job link: {e}")
+                        continue
+            else:
+                print("❌ No tool call made for clicking job.")
+                continue
+        except Exception as e:
+            print(f"❌ Error in model_click invocation: {e}")
             continue
 
         await asyncio.sleep(2)
@@ -142,36 +166,68 @@ async def apply_jobs_with_integrated_gpt4(navigator, elements_info, job_list_url
         while True:
             elements_info = await navigator.get_page_elements()
 
-            recent_tool_history = "\n".join(history[-3:]) or "None"
+            resume_file_path = "/home/neel/Desktop/HyperLink/Automatic Job Selection/Linked IN/Agents/rendercv-engineeringresumes-theme.pdf"
 
             system_message_apply = SystemMessage(content=f"""
                 ROLE: Job Application Agent
 
                 OBJECTIVE:
-                Your task is to complete the 'Easy Apply' job application flow if the button is available.
+                Your task is to complete the 'Easy Apply' job application flow for the current job post.
 
                 STRATEGY:
-                1. Look for a button labeled "Easy Apply".
-                2. If available, click it to begin the application.
-                3. If not present, return to the job list page at: {job_list_url}.
-                4. If you begin the application, proceed step-by-step (Next, Submit, etc.).
-                5. When application completes or cannot proceed, return to job list page.
+                Look at history and begin from remaining steps, adapting to how many steps the form has (could be 1 or 10). After each action, record which **step** was completed in the history. Use this to resume properly if interrupted.
 
-                TOOL USAGE INSTRUCTIONS:
-                - Use one tool per response.
-                - Do NOT provide explanations.
-                - If a tool action fails (e.g., click_element fails), try using a different tool to overcome the issue.
-                - Be adaptive: retry with a different approach if the first one didn’t work.
+                STEPS:
+                1. Detect and click the "Easy Apply" button to open the application modal.
+                2. On the first page:
+                    - Fill known fields like:
+                        - Mobile Phone Number → via `fill_input_field`
+                                                 
+                3. Click the "Next" button to proceed.
+                4. If asked to upload a resume:
+                    - Use the `upload_resume` tool.
+                    - Upload file from:
+                        - Path: {resume_file_path}
+                    - Then click "Next".
+                5. On subsequent pages, handle all other input questions:
+                    - Use `fill_dynamic_input_field` to type answers into text fields.
+                    - Use logical defaults when answers aren't specified:
+                        - "Are you legally authorized to work?" → Yes
+                        - "Do you need visa sponsorship?" → No
+                        - "Are you okay with onsite work?" → Yes
+                6. Continue pressing "Next" after completing each step.
+                7. When there's no "Next" but a "Review" button, click "Review".
+                8. Finally, click "Submit" to finish the application.
+                9. Then return to the job list at: {job_list_url}
+
+                TOOL USAGE RULES:
+                - Only one tool call per response.
+                - Do NOT explain your reasoning.
+                - If a tool fails (e.g., `click_element`), try another (e.g., scroll, then retry).
+                - Use `post_click_selector` to wait after clicks when necessary.
+                - For resume upload:
+                    - First click "Upload Resume" using `click_element`, then call `upload_resume`.
+                - For unknown questions or custom input fields:
+                    - Use `fill_dynamic_input_field(field_label, answer)` — infer answers if needed.
+                - Log your progress step-by-step in history:
+                    - Example:
+                        - Step 1: Clicked Easy Apply → Success
+                        - Step 2: Filled phone/email → Success
+                        - Step 3: Clicked Next → Success
+                - Resume based on this history log.
+                    - If a step is done, skip it.
+                    - If a step failed, retry or adapt — do NOT go backward.
 
                 CONTEXT:
-                - Tool failures will be reported below for your reasoning.
-                - Recent tool history:
-                {recent_tool_history or "None"}
+                - Recent tool call history:
+                    {history or "None"}
+                - According to history, do not repeat successful steps.
+                - If a step has an error, recover intelligently and proceed.
 
                 RULES:
-                - Each response must make exactly one tool call.
-                - Be robust to missing buttons or unexpected content.
-                - When you're back on the job list page, stop this job and proceed to next.
+                - Be robust to DOM changes and dynamic fields.
+                - If steps are skipped or merged on one page, adapt accordingly.
+                - If application is submitted or you return to the job list, end the loop.
 
                 CURRENT JOB: #{job_idx + 1}
                 CURRENT PAGE: Job Detail Page or Application Modal
@@ -179,39 +235,45 @@ async def apply_jobs_with_integrated_gpt4(navigator, elements_info, job_list_url
 
             human_message_apply = HumanMessage(content=f"DOM snapshot: {json.dumps(elements_info)[:6000]}")
 
-            response_apply = await model_apply.ainvoke([system_message_apply, human_message_apply])
-            if not response_apply.tool_calls:
-                print("⚠️ No tool call made — stopping Easy Apply flow.")
-                break
-
-            tool_call = response_apply.tool_calls[0]
-            tool_name = tool_call['name']
-            tool_args = tool_call['args']
-
-            print("LLM Decision:")
-            print(f"🤖 Tool selected: {tool_name}, Args: {tool_args}")
-
-            tool = next((t for t in tools if t.name == tool_name), None)
-            if tool:
-                try:
-                    result = await tool.ainvoke(tool_args)
-                    print(f"🔧 Tool result: {result}")
-                    print(f"✅ Tool executed: {tool_name}")
-                    history.append(f"{tool_name}({tool_args}) → {result}")
-                    
-                    await asyncio.sleep(2)
-                except Exception as e:
-                    print(f"❌ Tool execution failed: {e}")
-                    history.append(f"{tool_name}({tool_args}) → ERROR: {str(e)}")
+            try:
+                response_apply = await model_apply.ainvoke([system_message_apply, human_message_apply])
+                if not response_apply.tool_calls:
+                    print("⚠️ No tool call made — stopping Easy Apply flow.")
                     break
 
-                # Check if we've navigated back to job list
-                if tool_name == "navigate_to_url" and job_list_url in tool_args.get("url", ""):
-                    print("🔁 Back on job list page.")
+                tool_call = response_apply.tool_calls[0]
+                tool_name = tool_call['name']
+                tool_args = tool_call['args']
+
+                print("")
+                print(f"LLM Decision: 🤖 Tool selected: {tool_name}, Args: {tool_args}")
+                print("")
+
+                tool = next((t for t in tools if t.name == tool_name), None)
+                if tool:
+                    try:
+                        result = await tool.ainvoke(tool_args)
+                        print(f"🔧 Tool result: {result}")
+                        print(f"✅ Tool executed: {tool_name}")
+                        history.append(f"{tool_name}({tool_args}) → {result}")
+                        
+                        await asyncio.sleep(2)
+                    except Exception as e:
+                        print(f"❌ Tool execution failed: {e}")
+                        history.append(f"{tool_name}({tool_args}) → ERROR: {str(e)}")
+                        break
+
+                    # Check if we've navigated back to job list
+                    if tool_name == "navigate_to_url" and job_list_url in tool_args.get("url", ""):
+                        print("🔁 Back on job list page.")
+                        break
+                else:
+                    print(f"❌ Tool not found: {tool_name}")
+                    history.append(f"{tool_name}({tool_args}) → ERROR: Tool not found")
                     break
-            else:
-                print(f"❌ Tool not found: {tool_name}")
-                history.append(f"{tool_name}({tool_args}) → ERROR: Tool not found")
+            except Exception as e:
+                print(f"❌ Error in model_apply invocation: {e}")
+                history.append(f"ERROR: Model invocation failed: {str(e)}")
                 break
 
     return "done_applying"

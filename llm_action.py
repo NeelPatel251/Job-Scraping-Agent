@@ -3,7 +3,7 @@ from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain_core.messages import HumanMessage, SystemMessage
 from config import GEMINI_API_KEY, JOB_LOCATION, JOB_TITLE
 from tools import create_tools
-from job_agent import apply_jobs_with_integrated_gpt4
+from job_agent import apply_jobs_with_integrated_gemini
 
 model = ChatGoogleGenerativeAI(
     model="gemini-2.5-flash-preview-04-17",
@@ -32,7 +32,7 @@ async def ask_llm_for_action_with_tools(navigator_instance, elements_info, goal,
             return await ask_filter_agent(navigator_instance, elements_info, goal, current_step)
         elif current_step == "Applying_Jobs":
             current_url = elements_info["current_url"]
-            return await apply_jobs_with_integrated_gpt4(navigator_instance, elements_info, current_url)
+            return await apply_jobs_with_integrated_gemini(navigator_instance, elements_info, current_url)
         else:
             return await ask_generic_agent(navigator_instance, elements_info, goal, current_step)
 
@@ -72,7 +72,7 @@ async def ask_search_agent(navigator, elements_info, goal, step):
         - Job Title: {JOB_TITLE}
         - Location: {JOB_LOCATION}
 
-        Use 'fill_input_field' for both fields, then simulate pressing Enter by clicking a search button.
+        Use 'fill_input_field' for both fields, after filling location immediately press Enter to search.
         Do not ask the user for these values.
         """
     )

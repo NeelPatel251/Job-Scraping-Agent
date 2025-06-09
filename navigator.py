@@ -31,7 +31,7 @@ class LinkedInJobsNavigator:
         self.playwright = await async_playwright().start()
         self.browser = await self.playwright.chromium.launch(headless=False, slow_mo=1000)
         self.context = await self.browser.new_context()
-        self.page = await self.context.new_page()
+        self.page = await self.context.new_page()   
         
     async def check_page_state(self):
         """Check if page is still valid and accessible"""
