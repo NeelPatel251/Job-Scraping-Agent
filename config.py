@@ -4,6 +4,7 @@ from dotenv import load_dotenv
 load_dotenv()
 
 TARGET_URL = "https://www.linkedin.com"
+TARGET_JOB_URL = "https://www.linkedin.com/jobs/search?f_AL=true&keywords=Data%20Scientist&location=India"
 GEMINI_API_KEY = os.getenv("GOOGLE_API_KEY")
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 LINKEDIN_EMAIL = os.getenv("LINKEDIN_EMAIL")

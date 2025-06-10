@@ -5,7 +5,7 @@ from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain_core.tools import tool
 from langchain_core.messages import HumanMessage, SystemMessage
 from typing import Dict, Any, List, Optional
-from config import TARGET_URL, GEMINI_API_KEY, LINKEDIN_EMAIL, LINKEDIN_PASSWORD
+from config import TARGET_URL, GEMINI_API_KEY, LINKEDIN_EMAIL, LINKEDIN_PASSWORD, TARGET_JOB_URL
 from llm_action import ask_llm_for_action_with_tools
 
 model = ChatGoogleGenerativeAI(
@@ -53,25 +53,59 @@ class LinkedInJobsNavigator:
         except Exception as e:
             print(f"Page stability wait failed: {e}")
             return False
-        
+
     async def get_page_elements(self):
-        """Extract page elements and return structured data with error handling"""
+        """Extract structured data of buttons, links, and inputs from the current page."""
         try:
             if not await self.check_page_state():
                 print("Page is not accessible, waiting for stability...")
                 if not await self.wait_for_page_stable():
                     raise Exception("Page became inaccessible")
-            
-            await asyncio.sleep(3)
-            
+
+            await asyncio.sleep(2)  # wait for DOM to settle
+
             current_url = self.page.url
             page_title = await self.page.title()
-            
-            button_data = []
-            link_data = []
-            input_data = []
-            
-            # Get buttons with error handling
+
+            button_data, link_data, input_data = [], [], []
+
+            # -----------------------
+            # Collect all <a> links
+            # -----------------------
+            try:
+                links = await self.page.query_selector_all('a')
+                seen_hrefs = set()
+
+                for i, link in enumerate(links):
+                    try:
+                        text = await link.text_content() or ""
+                        href = await link.get_attribute('href') or ""
+                        href = href.strip()
+                        if not href or href.startswith("javascript:") or href in seen_hrefs:
+                            continue
+
+                        seen_hrefs.add(href)
+                        is_visible = await link.is_visible()
+                        target = await link.get_attribute('target')
+                        rel = await link.get_attribute('rel')
+
+                        link_data.append({
+                            'index': i + 1,
+                            'text': text.strip(),
+                            'href': href,
+                            'visible': is_visible,
+                            'target': target,
+                            'rel': rel
+                        })
+                    except Exception as e:
+                        print(f"Error processing link {i}: {e}")
+                        continue
+            except Exception as e:
+                print(f"Error getting links: {e}")
+
+            # -----------------------
+            # Collect all <button>
+            # -----------------------
             try:
                 buttons = await self.page.query_selector_all('button')
                 for i, button in enumerate(buttons):
@@ -79,41 +113,24 @@ class LinkedInJobsNavigator:
                         text = await button.text_content()
                         onclick = await button.get_attribute('onclick')
                         css_class = await button.get_attribute('class')
+                        is_visible = await button.is_visible()
+
                         if text and text.strip():
                             button_data.append({
-                                'index': i+1,
+                                'index': i + 1,
                                 'text': text.strip(),
                                 'onclick': onclick,
-                                'class': css_class
+                                'class': css_class,
+                                'visible': is_visible
                             })
                     except Exception as e:
                         print(f"Error processing button {i}: {e}")
-                        continue    # Define tools for the LLM to use
             except Exception as e:
                 print(f"Error getting buttons: {e}")
-                buttons = []
-                
-            # Get links with error handling
-            try:
-                links = await self.page.query_selector_all('a')
-                for i, link in enumerate(links):
-                    try:
-                        text = await link.text_content()
-                        href = await link.get_attribute('href')
-                        if text and text.strip():
-                            link_data.append({
-                                'index': i+1,
-                                'text': text.strip(),
-                                'href': href
-                            })
-                    except Exception as e:
-                        print(f"Error processing link {i}: {e}")
-                        continue
-            except Exception as e:
-                print(f"Error getting links: {e}")
-                links = []
-                
-            # Get inputs with error handling
+
+            # -----------------------
+            # Collect all <input>
+            # -----------------------
             try:
                 inputs = await self.page.query_selector_all('input')
                 for i, input_elem in enumerate(inputs):
@@ -124,9 +141,9 @@ class LinkedInJobsNavigator:
                         id_attr = await input_elem.get_attribute('id')
                         is_visible = await input_elem.is_visible()
                         is_enabled = await input_elem.is_enabled()
-                        
+
                         input_data.append({
-                            'index': i+1,
+                            'index': i + 1,
                             'type': input_type,
                             'placeholder': placeholder,
                             'name': name,
@@ -136,26 +153,23 @@ class LinkedInJobsNavigator:
                         })
                     except Exception as e:
                         print(f"Error processing input {i}: {e}")
-                        continue
             except Exception as e:
                 print(f"Error getting inputs: {e}")
-                inputs = []
-            
+
             elements_info = {
                 'current_url': current_url,
                 'page_title': page_title,
                 'buttons': button_data,
                 'links': link_data,
                 'inputs': input_data,
-                'total_buttons': len(buttons) if 'buttons' in locals() else 0,
-                'total_links': len(links) if 'links' in locals() else 0,
-                'total_inputs': len(inputs) if 'inputs' in locals() else 0
+                'total_buttons': len(button_data),
+                'total_links': len(link_data),
+                'total_inputs': len(input_data)
             }
-            
-            # Store for tool access
+
             self.page_elements = elements_info
             return elements_info
-            
+
         except Exception as e:
             print(f"Critical error in get_page_elements: {e}")
             try:
@@ -164,7 +178,7 @@ class LinkedInJobsNavigator:
             except:
                 current_url = "unknown"
                 page_title = "unknown"
-                
+
             error_info = {
                 'current_url': current_url,
                 'page_title': page_title,
@@ -178,6 +192,132 @@ class LinkedInJobsNavigator:
             }
             self.page_elements = error_info
             return error_info
+
+
+    # async def get_page_elements(self):
+    #     """Extract page elements and return structured data with error handling"""
+    #     try:
+    #         if not await self.check_page_state():
+    #             print("Page is not accessible, waiting for stability...")
+    #             if not await self.wait_for_page_stable():
+    #                 raise Exception("Page became inaccessible")
+            
+    #         await asyncio.sleep(3)
+            
+    #         current_url = self.page.url
+    #         page_title = await self.page.title()
+            
+    #         button_data = []
+    #         link_data = []
+    #         input_data = []
+            
+    #         # Get buttons with error handling
+    #         try:
+    #             buttons = await self.page.query_selector_all('button')
+    #             for i, button in enumerate(buttons):
+    #                 try:
+    #                     text = await button.text_content()
+    #                     onclick = await button.get_attribute('onclick')
+    #                     css_class = await button.get_attribute('class')
+    #                     if text and text.strip():
+    #                         button_data.append({
+    #                             'index': i+1,
+    #                             'text': text.strip(),
+    #                             'onclick': onclick,
+    #                             'class': css_class
+    #                         })
+    #                 except Exception as e:
+    #                     print(f"Error processing button {i}: {e}")
+    #                     continue    # Define tools for the LLM to use
+    #         except Exception as e:
+    #             print(f"Error getting buttons: {e}")
+    #             buttons = []
+                
+    #         # Get links with error handling
+    #         try:
+    #             links = await self.page.query_selector_all('a')
+    #             for i, link in enumerate(links):
+    #                 try:
+    #                     text = await link.text_content()
+    #                     href = await link.get_attribute('href')
+    #                     if text and text.strip():
+    #                         link_data.append({
+    #                             'index': i+1,
+    #                             'text': text.strip(),
+    #                             'href': href
+    #                         })
+    #                 except Exception as e:
+    #                     print(f"Error processing link {i}: {e}")
+    #                     continue
+    #         except Exception as e:
+    #             print(f"Error getting links: {e}")
+    #             links = []
+                
+    #         # Get inputs with error handling
+    #         try:
+    #             inputs = await self.page.query_selector_all('input')
+    #             for i, input_elem in enumerate(inputs):
+    #                 try:
+    #                     input_type = await input_elem.get_attribute('type')
+    #                     placeholder = await input_elem.get_attribute('placeholder')
+    #                     name = await input_elem.get_attribute('name')
+    #                     id_attr = await input_elem.get_attribute('id')
+    #                     is_visible = await input_elem.is_visible()
+    #                     is_enabled = await input_elem.is_enabled()
+                        
+    #                     input_data.append({
+    #                         'index': i+1,
+    #                         'type': input_type,
+    #                         'placeholder': placeholder,
+    #                         'name': name,
+    #                         'id': id_attr,
+    #                         'visible': is_visible,
+    #                         'enabled': is_enabled
+    #                     })
+    #                 except Exception as e:
+    #                     print(f"Error processing input {i}: {e}")
+    #                     continue
+    #         except Exception as e:
+    #             print(f"Error getting inputs: {e}")
+    #             inputs = []
+            
+    #         elements_info = {
+    #             'current_url': current_url,
+    #             'page_title': page_title,
+    #             'buttons': button_data,
+    #             'links': link_data,
+    #             'inputs': input_data,
+    #             'total_buttons': len(buttons) if 'buttons' in locals() else 0,
+    #             'total_links': len(links) if 'links' in locals() else 0,
+    #             'total_inputs': len(inputs) if 'inputs' in locals() else 0
+    #         }
+            
+    #         # Store for tool access
+    #         self.page_elements = elements_info
+    #         return elements_info
+            
+    #     except Exception as e:
+    #         print(f"Critical error in get_page_elements: {e}")
+    #         try:
+    #             current_url = self.page.url if self.page else "unknown"
+    #             page_title = await self.page.title() if self.page else "unknown"
+    #         except:
+    #             current_url = "unknown"
+    #             page_title = "unknown"
+                
+    #         error_info = {
+    #             'current_url': current_url,
+    #             'page_title': page_title,
+    #             'buttons': [],
+    #             'links': [],
+    #             'inputs': [],
+    #             'total_buttons': 0,
+    #             'total_links': 0,
+    #             'total_inputs': 0,
+    #             'error': str(e)
+    #         }
+    #         self.page_elements = error_info
+    #         return error_info
 
     def is_verification_page(self, elements_info):
         """Check if current page is security verification/challenge page"""
@@ -266,15 +406,6 @@ class LinkedInJobsNavigator:
                             if self.current_step != "Applying_Jobs":
                                 print("🚀 Easy Apply filter applied — ready to start applying to jobs.")
                                 self.current_step = "Applying_Jobs"
-                        else:
-                            if self.current_step != "filter_easy_apply":
-                                print("✅ Reached LinkedIn Jobs Search Results page — ready for Easy Apply filter.")
-                                self.current_step = "filter_easy_apply"
-
-                    elif "linkedin.com/jobs" in current_url:
-                        if self.current_step != "jobs_section":
-                            print("🎉 Reached LinkedIn Jobs landing page.")
-                            self.current_step = "jobs_section"
 
                     elif "linkedin.com/feed" in current_url or "linkedin.com/home" in current_url:
                         if self.current_step != "homepage":
@@ -292,14 +423,12 @@ class LinkedInJobsNavigator:
                     goal = (
                         "Navigate LinkedIn from the homepage to the Jobs section. "
                         "First, sign in using the provided email and password by filling the login form. "
-                        "Then, in the Jobs section, use the fill_input_field tool to enter the job title and location. "
-                        "After filling both fields, if a visible and enabled search button is found, use click_element tool to click it. "
-                        "If no such button is found or clickable, simulate pressing the Enter key in the input field instead to trigger the search. "
-                        "After triggering the search, wait for the search results page to load. "
-                        "Then, look for the Easy Apply Filter button and press it to apply the filter for searched jobs. "
-                        "Once the Easy Apply filter is successfully applied (confirmed by f_AL=true in the URL), proceed to the next step: start applying to jobs. "
+                        "After successful login, directly navigate to the JOB URL to view filtered job results: "
+                        "Wait for the job search results to fully load. "
+                        "Once the page is loaded, proceed to the next step: start applying to jobs. "
                         "Do not ask the user for any inputs. Use tools for all actions."
                     )
+
 
 
                     print("")

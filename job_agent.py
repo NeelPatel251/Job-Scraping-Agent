@@ -25,6 +25,14 @@ async def filter_job_links_with_llm(elements_info):
         return []
 
     links = elements_info.get("links", [])
+
+    print("===================================================================================================================")
+    for i in links:
+        print("")
+        print(i)
+        print("")
+
+    print("===================================================================================================================")
     model = gemini_model_1
 
     system_msg = SystemMessage(content="""

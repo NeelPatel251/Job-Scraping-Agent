@@ -1,7 +1,7 @@
 import json
 from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain_core.messages import HumanMessage, SystemMessage
-from config import GEMINI_API_KEY, JOB_LOCATION, JOB_TITLE
+from config import GEMINI_API_KEY, JOB_LOCATION, JOB_TITLE, TARGET_JOB_URL
 from tools import create_tools
 from job_agent import apply_jobs_with_integrated_gemini
 
@@ -24,12 +24,9 @@ async def ask_llm_for_action_with_tools(navigator_instance, elements_info, goal,
     try:
         if current_step.startswith("login") or current_step.startswith("fill") or current_step == "submit_login":
             return await ask_login_agent(navigator_instance, elements_info, goal, current_step)
-        elif current_step.startswith("jobs_section"):
-            return await ask_jobs_agent(navigator_instance, elements_info, goal, current_step)
-        elif current_step.startswith("search_jobs") or current_step in ["fill_job_title", "fill_location", "search_submitted"]:
-            return await ask_search_agent(navigator_instance, elements_info, goal, current_step)
-        elif current_step == "filter_easy_apply":
-            return await ask_filter_agent(navigator_instance, elements_info, goal, current_step)
+        elif current_step == "homepage":
+            url = TARGET_JOB_URL
+            return await navigate_to_Jobs(navigator_instance, elements_info, goal, current_step, url)
         elif current_step == "Applying_Jobs":
             current_url = elements_info["current_url"]
             return await apply_jobs_with_integrated_gemini(navigator_instance, elements_info, current_url)
@@ -53,43 +50,17 @@ async def ask_login_agent(navigator, elements_info, goal, step):
         """
     )
 
-async def ask_jobs_agent(navigator, elements_info, goal, step):
+async def navigate_to_Jobs(navigator, elements_info, goal, step, url):
     return await _invoke_llm_tool_use(
         navigator, elements_info, goal, step,
-        agent_role="JobsSectionAgent",
-        extra_instruction="""
-        Your goal is to detect whether we are in the Jobs section and help transition to the 'search_jobs' step.
-        If already in Jobs section, set current_step to 'search_jobs'.
-        """
-    )
-
-async def ask_search_agent(navigator, elements_info, goal, step):
-    return await _invoke_llm_tool_use(
-        navigator, elements_info, goal, step,
-        agent_role="SearchAgent",
+        agent_role="Navigate_To_Jobs",
         extra_instruction=f"""
-        JOB SEARCH PARAMETERS:
-        - Job Title: {JOB_TITLE}
-        - Location: {JOB_LOCATION}
-
-        Use 'fill_input_field' for both fields, after filling location immediately press Enter to search.
-        Do not ask the user for these values.
-        """
-    )
-
-async def ask_filter_agent(navigator, elements_info, goal, step):
-    return await _invoke_llm_tool_use(
-        navigator, elements_info, goal, step,
-        agent_role="FilterAgent",
-        extra_instruction="""
-        Your task is to enable the 'Easy Apply' filter on the job search results page.
-
-        STEPS:
-        - Look for buttons or links with labels like "Easy Apply", "Easy apply", or containing the word "easy".
-        - If a button labeled "Easy Apply" is found, click it using the appropriate tool.
-        - Only apply the filter once.
-
-        If the filter is already active, return without clicking anything.
+        Your task is to navigate to the LinkedIn Jobs page.
+        The URL to navigate to is: {url}
+        
+        - Use the `navigate_to_url` tool with the URL: {url}
+        - Do not click links or buttons unless instructed.
+        - Use the provided URL directly with the navigation tool.
         """
     )
 
