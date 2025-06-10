@@ -261,86 +261,6 @@ def create_tools(self):
             return f"Error filling input field: {str(e)}"
 
     @tool
-    async def upload_resume(file_input_selector: str = "input[type='file']", file_path: str = RESUME_PATH) -> str:
-        """
-        Upload a resume to the input[type=file] element.
-
-        Args:
-            file_input_selector: CSS selector for file input field
-            file_path: Path to the resume file to upload
-
-        Returns:
-            Upload result message
-        """
-        try:
-            if not await self.check_page_state():
-                return "Error: Page not accessible"
-
-            input_elem = await self.page.query_selector(file_input_selector)
-            if not input_elem or not await input_elem.is_visible():
-                return f"Error: File input not visible after clicking upload button."
-
-            await input_elem.set_input_files(file_path)
-            await asyncio.sleep(1)
-            self.add_to_history("upload_resume", file_path, "success")
-            return f"Successfully uploaded resume: {file_path}"
-        except Exception as e:
-            return f"Error uploading resume: {str(e)}"
-
-
-    @tool
-    async def fill_dynamic_input(label_text: str, value: str) -> str:
-        """
-        Dynamically fills a form field based on the visible label text.
-
-        Args:
-            label_text: Visible label or question near the input field (e.g., "Expected salary")
-            value: Value to be filled
-
-        Returns:
-            Success/failure message
-        """
-        try:
-            if not await self.check_page_state():
-                return "Error: Page not accessible"
-
-            print(f"🔧 Tool: Attempting to fill field labeled '{label_text}' with value '{value}'")
-
-            # Find label elements that match the provided label text
-            label_candidates = await self.page.query_selector_all(f'label')
-
-            for label in label_candidates:
-                label_content = (await label.inner_text()).strip().lower()
-                if label_text.lower() in label_content:
-                    # Try to find associated input via "for" attribute
-                    label_for = await label.get_attribute("for")
-                    if label_for:
-                        input_elem = await self.page.query_selector(f'#{label_for}')
-                        if input_elem and await input_elem.is_visible():
-                            await input_elem.click()
-                            await asyncio.sleep(0.5)
-                            await input_elem.fill(value)
-                            await asyncio.sleep(1)
-                            self.add_to_history("fill_dynamic_input", label_text, "success")
-                            return f"Successfully filled field for label '{label_text}'"
-
-                    # If no "for" attr, check input directly under the label
-                    nested_input = await label.query_selector("input")
-                    if nested_input and await nested_input.is_visible():
-                        await nested_input.click()
-                        await asyncio.sleep(0.5)
-                        await nested_input.fill(value)
-                        await asyncio.sleep(1)
-                        self.add_to_history("fill_dynamic_input", label_text, "success")
-                        return f"Successfully filled nested field for label '{label_text}'"
-
-            return f"Error: No input found for label '{label_text}'"
-
-        except Exception as e:
-            return f"Error in fill_dynamic_input: {str(e)}"
-
-
-    @tool
     async def press_enter_on_input(identifier: str, description: str = "") -> str:
         """
         Press the Enter key inside an input field (e.g. job title or location field).
@@ -443,4 +363,4 @@ def create_tools(self):
         except Exception as e:
             return f"Error checking page status: {str(e)}"
 
-    return [click_element, fill_input_field, navigate_to_url, wait_and_observe, check_page_status, press_enter_on_input, fill_dynamic_input, upload_resume]
+    return [click_element, fill_input_field, navigate_to_url, wait_and_observe, check_page_status, press_enter_on_input]
