@@ -54,6 +54,26 @@ class LinkedInJobsNavigator:
             print(f"Page stability wait failed: {e}")
             return False
 
+    async def extract_easy_apply_modal_html(self) -> str:
+        """
+        Extract the outerHTML of the LinkedIn Easy Apply modal which contains the form.
+        """
+        try:
+            if not self.page:
+                raise Exception("No page object available")
+
+            # This class is unique to the Easy Apply modal content
+            modal = self.page.locator("div.jobs-easy-apply-modal__content").first
+            await modal.wait_for(state="visible", timeout=5000)
+
+            html = await modal.evaluate("el => el.outerHTML")
+            return html
+
+        except Exception as e:
+            print(f"❌ Failed to extract Easy Apply modal HTML: {e}")
+            return ""
+
+    
     async def get_page_elements(self):
         """Extract structured data of buttons, links, and inputs from the current page."""
         try:
