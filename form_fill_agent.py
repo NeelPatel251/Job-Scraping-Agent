@@ -3,6 +3,7 @@ import json
 import re
 from langchain_core.messages import HumanMessage, SystemMessage
 from tools import create_tools
+from config import RESUME_PATH
 
 class FormFillAgent:
 
@@ -11,24 +12,10 @@ class FormFillAgent:
         self.llm_model = llm_model
 
         # Only use click_element tool for now
-        self.tools = create_tools(navigator)
+        self.tools = create_tools(navigator, RESUME_PATH)
         self.model_with_tools = llm_model.bind_tools(self.tools)
 
-        # Optional: user profile retained for future use
-        self.user_profile = {
-            "name": "Neel Patel",
-            "email": "gayic10347@gotemv.com",
-            "phone": "9876543210",
-            "country_code": "India (+91)",
-            "location": "Ahmedabad, Gujarat, India",
-            "university": "Pandit Deendayal Energy University",
-            "experience": {
-                "python": "2 years",
-                "javascript": "1 year",
-                "react": "1 year",
-                "web_development": "2 years"
-            }
-        }
+        self.last_extracted_questions = []
 
     async def get_current_page_state(self):
         """Get elements and HTML for Easy Apply modal if loaded"""
@@ -241,7 +228,9 @@ class FormFillAgent:
 
         # Method 3: Try LLM with better error handling
         try:
-            return await self.extract_questions_with_llm(form_html)
+            self.last_extracted_questions = await self.extract_questions_with_llm(form_html)
+            return self.last_extracted_questions
+
         except Exception as e:
             print(f"❌ LLM method failed: {e}")
             return []

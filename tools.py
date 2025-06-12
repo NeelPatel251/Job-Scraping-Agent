@@ -2,10 +2,46 @@ import asyncio
 from langchain_core.tools import tool
 from config import LINKEDIN_EMAIL, LINKEDIN_PASSWORD, JOB_LOCATION, JOB_TITLE, PHONE_NUMNER, RESUME_PATH
 
-
-def create_tools(self):
+def create_tools(self, resume_path):
     """Create tools that the LLM can call"""
-    
+
+    @tool
+    async def form_fill_tool(element_id: str, value: str, element_type: str = "input") -> str:
+        """
+        Fills a form element (input, select, textarea) with a given value.
+
+        Args:
+            element_id: The ID attribute of the HTML element to target.
+            value: The value to enter or select.
+            element_type: One of 'input', 'select', or 'textarea'.
+
+        Returns:
+            A success or error message.
+        """
+        try:
+            print(f"🔧 [FormFillTool] Filling {element_type} with ID: {element_id} → {value}")
+            if not await self.check_page_state():
+                return "Error: Page not ready"
+
+            selector = f"#{element_id}"
+            elem = await self.page.query_selector(selector)
+            if not elem:
+                return f"Error: Element with ID '{element_id}' not found"
+
+            await elem.scroll_into_view_if_needed()
+            await elem.click()
+
+            if element_type == "select":
+                await self.page.select_option(selector, value)
+            else:
+                await elem.fill(value)
+
+            await self.page.wait_for_timeout(300)  # Optional slight delay
+            return f"✅ Filled {element_type} '{element_id}' with '{value}'"
+
+        except Exception as e:
+            return f"Error filling form element: {str(e)}"
+
     @tool
     async def click_element(element_type: str, identifier: str, description: str = "", post_click_selector: str = "") -> str:
         """
@@ -362,5 +398,44 @@ def create_tools(self):
             
         except Exception as e:
             return f"Error checking page status: {str(e)}"
+        
+    @tool
+    async def upload_resume_tool(element_id: str = "") -> str:
+        """
+        Uploads resume to a file input field on the page.
 
-    return [click_element, fill_input_field, navigate_to_url, wait_and_observe, check_page_status, press_enter_on_input]
+        Args:
+            element_id: The ID of the file input element. If empty, will try to auto-detect.
+
+        Returns:
+            Upload status.
+        """
+        try:
+            print(f"📎 [UploadResumeTool] Uploading resume from: {resume_path}")
+            if not await self.check_page_state():
+                return "Error: Page not accessible"
+
+            input_elem = None
+
+            if element_id:
+                input_elem = await self.page.query_selector(f'#{element_id}')
+            else:
+                # Attempt auto-detection
+                candidates = await self.page.query_selector_all('input[type="file"]')
+                for c in candidates:
+                    visible = await c.is_visible()
+                    if visible:
+                        input_elem = c
+                        break
+
+            if not input_elem:
+                return "Error: No file input field found"
+
+            await input_elem.set_input_files(self)
+            await self.page.wait_for_timeout(1000)
+            return "✅ Resume uploaded successfully"
+
+        except Exception as e:
+            return f"Error uploading resume: {str(e)}"
+
+    return [click_element, fill_input_field, navigate_to_url, wait_and_observe, check_page_status, press_enter_on_input, form_fill_tool, upload_resume_tool]

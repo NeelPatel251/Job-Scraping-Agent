@@ -13,7 +13,7 @@ JOB_TITLE = "Data Scientist"
 JOB_LOCATION = "Bangalore, India"
 
 PHONE_NUMNER = "7046281329"
-RESUME_PATH = "/home/neel/Desktop/HyperLink/Automatic Job Selection/Linked IN/Agents/rendercv-engineeringresumes-theme.pdf"
+RESUME_PATH = "/home/neel/Desktop/HyperLink/Automatic_Job_Selection/Linked_IN/Agents/resume college 1.pdf"
 
 def format_linkedin_job_url(base_url, job_title, location, easy_apply=True):
     """

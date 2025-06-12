@@ -1,7 +1,7 @@
 import json
 from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain_core.messages import HumanMessage, SystemMessage
-from config import GEMINI_API_KEY, JOB_LOCATION, JOB_TITLE, TARGET_JOB_URL
+from config import GEMINI_API_KEY, JOB_LOCATION, JOB_TITLE, TARGET_JOB_URL, RESUME_PATH
 from tools import create_tools
 from job_agent import apply_jobs_with_integrated_gemini
 
@@ -76,7 +76,7 @@ async def ask_generic_agent(navigator, elements_info, goal, step):
     )
 
 async def _invoke_llm_tool_use(navigator, elements_info, goal, step, agent_role, extra_instruction=""):
-    tools = create_tools(navigator)
+    tools = create_tools(navigator, RESUME_PATH)
     model_with_tools = model.bind_tools(tools)
 
     # Construct action history
