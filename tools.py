@@ -77,6 +77,34 @@ def create_tools(self, resume_path):
                         return f"Error: Could not select '{value}' in dropdown '{element_id}'"
 
             elif element_type.lower() == "radio":
+
+                from radio import resolve_radio_input_id
+                # 🔁 Resolve actual radio input ID
+                element_id = await resolve_radio_input_id(self, element_id, value)
+
+                print(f"\n Radio ID : {element_id} \n")
+
+                selectors_to_try = [
+                    f"#{element_id}",
+                    f"[id='{element_id}']",
+                    f"[name='{element_id}']",
+                    f"[data-test-id='{element_id}']",
+                    f"[aria-describedby='{element_id}']"
+                ]
+
+                elem = None
+                for selector in selectors_to_try:
+                    try:
+                        elem = await self.page.query_selector(selector)
+                        print(f"\nelem : {elem}\n")
+                        if elem and await elem.is_visible():
+                            break
+                    except:
+                        continue
+
+                if not elem:
+                    return f"Error: Element with ID '{element_id}' not found or not visible"
+
                 # Handle radio buttons
                 if action.lower() == "select" or action.lower() == "click" or action.lower() == "check":
                     await elem.click()

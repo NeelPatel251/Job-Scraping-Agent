@@ -58,7 +58,6 @@ class FormValueFillerAgent:
             Fill form fields with the provided values using click_element tool.
 
             STRATEGY:
-            - Use click_element tool to fill each field with its corresponding value
             - Fill one field at a time
             - Handle different input types (text, checkbox, dropdown, etc.)
             - Be precise with element IDs
@@ -82,8 +81,6 @@ class FormValueFillerAgent:
                 - Element ID: {element_id}
                 - Question: {question}
                 - Value to fill: {value}
-                
-                Use click_element tool to fill this field.
             """)
             
             try:
@@ -98,16 +95,16 @@ class FormValueFillerAgent:
                     if tool:
                         try:
                             await tool.ainvoke(tool_args)
-                            print(f"     ✅ Filled successfully")
+                            print(f"✅ Filled successfully")
                             await asyncio.sleep(1)  # Small delay between fills
                         except Exception as e:
-                            print(f"     ❌ Failed to fill field: {e}")
+                            print(f"❌ Failed to fill field: {e}")
 
                 else:
-                    print(f"     ❌ No tool call made for field")
+                    print(f"❌ No tool call made for field")
                     
             except Exception as e:
-                print(f"     ❌ Error filling field: {e}")
+                print(f"❌ Error filling field: {e}")
                 
         return True
     

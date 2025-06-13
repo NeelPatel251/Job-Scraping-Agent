@@ -95,107 +95,26 @@ class FormFillAgent:
         questions = await self.extract_questions_only(page_state)
 
         if questions:
+
+            print("\n" + "="*60)
+            print("📋 EXTRACTED QUESTIONS:")
+            print("="*60)
+            
+            # Print the extracted questions first
+            for i, q in enumerate(questions, 1):
+                print(f"{i}. Question: {q.get('question', 'Unknown')}")
+                print(f"   Element ID: {q.get('element_id', 'Unknown')}")
+                print(f"   Type: {q.get('element_type', 'Unknown')}")
+                if q.get('options'):
+                    print(f"   Options: {q.get('options')}")
+                print("-" * 40)
+            
+            print("="*60)
+            
             return "questions_extracted"
 
         print("⚠️ No questions found in form after clicking Easy Apply.")
         return "no_questions"
-
-    # def extract_questions_with_regex(self, html_content):
-    #     """Fallback method to extract questions using regex patterns"""
-    #     questions = []
-        
-    #     # Pattern for labels (most common)
-    #     label_pattern = r'<label[^>]*>([^<]+)</label>'
-    #     labels = re.findall(label_pattern, html_content, re.IGNORECASE)
-        
-    #     # Pattern for placeholder text
-    #     placeholder_pattern = r'placeholder="([^"]+)"'
-    #     placeholders = re.findall(placeholder_pattern, html_content, re.IGNORECASE)
-        
-    #     # Pattern for legend text (for fieldsets)
-    #     legend_pattern = r'<legend[^>]*>([^<]+)</legend>'
-    #     legends = re.findall(legend_pattern, html_content, re.IGNORECASE)
-        
-    #     # Combine and filter
-    #     all_questions = labels + placeholders + legends
-        
-    #     # Filter out common non-question texts
-    #     filter_out = [
-    #         'required', 'optional', 'submit', 'cancel', 'next', 'previous',
-    #         'save', 'continue', 'back', 'close', 'ok', 'yes', 'no'
-    #     ]
-        
-    #     for question in all_questions:
-    #         question = question.strip()
-    #         if (len(question) > 3 and 
-    #             question.lower() not in filter_out and
-    #             not question.startswith('<!--') and
-    #             'phone country code' not in question.lower()):
-    #             questions.append(question)
-        
-    #     return list(set(questions))  # Remove duplicates
-
-    # def extract_questions_with_beautifulsoup(self, html_content):
-    #     """Extract questions using BeautifulSoup for better HTML parsing"""
-    #     questions = []
-        
-    #     try:
-    #         soup = BeautifulSoup(html_content, 'html.parser')
-            
-    #         # Find all labels
-    #         labels = soup.find_all('label')
-    #         for label in labels:
-    #             text = label.get_text(strip=True)
-    #             if text and len(text) > 3:
-    #                 questions.append(text)
-            
-    #         # Find input fields with placeholder
-    #         inputs = soup.find_all('input', {'placeholder': True})
-    #         for input_field in inputs:
-    #             placeholder = input_field.get('placeholder', '').strip()
-    #             if placeholder and len(placeholder) > 3:
-    #                 questions.append(placeholder)
-            
-    #         # Find select fields with preceding labels or legends
-    #         selects = soup.find_all('select')
-    #         for select in selects:
-    #             # Look for associated label
-    #             select_id = select.get('id')
-    #             if select_id:
-    #                 label = soup.find('label', {'for': select_id})
-    #                 if label:
-    #                     text = label.get_text(strip=True)
-    #                     if text and len(text) > 3:
-    #                         questions.append(text)
-            
-    #         # Find fieldsets with legends
-    #         fieldsets = soup.find_all('fieldset')
-    #         for fieldset in fieldsets:
-    #             legend = fieldset.find('legend')
-    #             if legend:
-    #                 text = legend.get_text(strip=True)
-    #                 if text and len(text) > 3:
-    #                     questions.append(text)
-            
-    #         # Filter out unwanted items
-    #         filtered_questions = []
-    #         filter_out = [
-    #             'required', 'optional', 'submit', 'cancel', 'next', 'previous',
-    #             'save', 'continue', 'back', 'close', 'ok', 'yes', 'no'
-    #         ]
-            
-    #         for question in questions:
-    #             question = question.strip()
-    #             if (len(question) > 3 and 
-    #                 question.lower() not in filter_out and
-    #                 'phone country code' not in question.lower()):
-    #                 filtered_questions.append(question)
-            
-    #         return list(set(filtered_questions))  # Remove duplicates
-            
-    #     except Exception as e:
-    #         print(f"❌ BeautifulSoup parsing error: {e}")
-    #         return []
 
     async def extract_questions_only(self, page_state):
         """Extract form questions from modal HTML with multiple fallback methods"""
@@ -205,25 +124,6 @@ class FormFillAgent:
             print("⚠️ No form HTML found")
             return []
 
-        # Method 1: Try BeautifulSoup first (most reliable)
-        # try:
-        #     questions = self.extract_questions_with_beautifulsoup(form_html)
-        #     if questions:
-        #         print(f"✅ BeautifulSoup extracted {len(questions)} questions")
-        #         return questions
-        # except Exception as e:
-        #     print(f"❌ BeautifulSoup method failed: {e}")
-
-        # # Method 2: Try regex patterns
-        # try:
-        #     questions = self.extract_questions_with_regex(form_html)
-        #     if questions:
-        #         print(f"✅ Regex extracted {len(questions)} questions")
-        #         return questions
-        # except Exception as e:
-        #     print(f"❌ Regex method failed: {e}")
-
-        # Method 3: Try LLM with better error handling
         try:
             self.last_extracted_questions = await self.extract_questions_with_llm(form_html)
             return self.last_extracted_questions
@@ -234,46 +134,64 @@ class FormFillAgent:
 
     async def extract_questions_with_llm(self, form_html):
         """Extract questions and their element references using LLM"""
-
         system_message = SystemMessage(content="""
-        ROLE: LinkedIn Easy Apply Form Parser
+    ROLE: LinkedIn Easy Apply Form Parser
+    TASK: Extract form questions AND their corresponding element identifiers from LinkedIn Easy Apply HTML.
 
-        TASK: Extract form questions AND their corresponding element identifiers from LinkedIn Easy Apply HTML.
+    INSTRUCTIONS:
+    1. Find form elements: <input>, <select>, <textarea>
+    2. For each element, extract:
+    - The question text (from associated <label>, placeholder, or nearby text)
+    - The element identifier (id, name, or CSS selector)
+    - The element type (input, select, textarea, checkbox, radio)
+    - For SELECT, CHECKBOX, and RADIO elements: Extract ALL available options
 
-        INSTRUCTIONS:
-        1. Find form elements: <input>, <select>, <textarea>
-        2. For each element, extract:
-        - The question text (from associated <label>, placeholder, or nearby text)
-        - The element identifier (id, name, or CSS selector)
-        - The element type (input, select, textarea)
-        3. IGNORE: Phone country code dropdowns, submit buttons, navigation buttons
-        4. ONLY extract elements that require user input
+    3. IGNORE: Phone country code dropdowns, submit buttons, navigation buttons
+    4. ONLY extract elements that require user input
 
-        OUTPUT FORMAT: Return ONLY a valid JSON array of objects. Example:
-        [
-            {
-                "question": "Mobile phone number",
-                "element_id": "single-line-text-form-component-formElement-urn-li-jobs-123",
-                "element_type": "input",
-                "selector": "#single-line-text-form-component-formElement-urn-li-jobs-123"
-            },
-            {
-                "question": "Years of experience with Python",
-                "element_id": "numeric-form-component-123",
-                "element_type": "select",
-                "selector": "#numeric-form-component-123"
-            }
-        ]
+    OUTPUT FORMAT: Return ONLY a valid JSON array of objects. Examples:
 
-        CRITICAL: Your response must be valid JSON format, nothing else.
-        """)
+    For INPUT elements:
+    {
+    "question": "Mobile phone number",
+    "element_id": "single-line-text-form-component-formElement-urn-li-jobs-123",
+    "element_type": "input",
+    "selector": "#single-line-text-form-component-formElement-urn-li-jobs-123",
+    "options": null
+    }
 
+    For SELECT elements:
+    {
+    "question": "Do you have experience with Python?",
+    "element_id": "text-entity-list-form-component-formElement-urn-li-jobs-123",
+    "element_type": "select",
+    "selector": "#text-entity-list-form-component-formElement-urn-li-jobs-123",
+    "options": ["Select an option", "Yes", "No"]
+    }
+
+    For CHECKBOX/RADIO elements:
+    {
+    "question": "Preferred work location",
+    "element_id": "checkbox-group-123",
+    "element_type": "checkbox",
+    "selector": "input[name='work-location']",
+    "options": ["Remote", "Hybrid", "On-site"]
+    }
+
+    CRITICAL RULES:
+    - Your response must be valid JSON format, nothing else
+    - For select/checkbox/radio elements, ALWAYS include "options" array
+    - For input/textarea elements, set "options" to null
+    - Extract option values from <option>, checkbox labels, or radio labels
+    - Skip default/placeholder options like "Select an option" unless they're meaningful
+    """)
+        
         human_message = HumanMessage(content=f"HTML to analyze:\n{form_html}")
-
+        
         try:
             response = await self.llm_model.ainvoke([system_message, human_message])
             response_content = response.content.strip()
-
+            
             # Try JSON extraction
             json_match = re.search(r'\[\s*{.*}\s*\]', response_content, re.DOTALL)
             if json_match:
@@ -281,30 +199,196 @@ class FormFillAgent:
                 try:
                     form_elements = json.loads(json_str)
                     if isinstance(form_elements, list):
-                        print(f"✅ LLM extracted {len(form_elements)} form elements")
-                        return form_elements
+                        # Validate and clean the extracted elements
+                        cleaned_elements = self._validate_and_clean_elements(form_elements)
+                        print(f"✅ LLM extracted {len(cleaned_elements)} form elements")
+                        return cleaned_elements
                 except json.JSONDecodeError as e:
                     print(f"❌ JSON parsing error: {e}")
                     print(f"LLM raw response (truncated): {response_content[:300]}...")
-
-            # Fallback: try to parse line-by-line text if JSON failed
-            form_elements = []
-            lines = response_content.split('\n')
-            for i, line in enumerate(lines):
-                line = line.strip().strip('"').strip("'")
-                if len(line) > 3 and not line.startswith(('```', '#', '-', '*', '1.', '2.')):
-                    form_elements.append({
-                        "question": line,
-                        "element_id": f"unknown-element-{i}",
-                        "element_type": "input",
-                        "selector": f"[data-question*='{line[:20]}']"
-                    })
-
+            
+            # Enhanced fallback with basic HTML parsing
+            form_elements = self._fallback_html_parsing(form_html)
             if form_elements:
-                print(f"✅ LLM fallback extracted {len(form_elements)} elements")
+                print(f"✅ Fallback HTML parsing extracted {len(form_elements)} elements")
                 return form_elements
-
+                
         except Exception as e:
             print(f"❌ Unexpected error during LLM extraction: {e}")
+            return []
 
-        return []
+    def _validate_and_clean_elements(self, elements):
+        """Validate and clean extracted form elements"""
+        cleaned = []
+        for element in elements:
+            if not isinstance(element, dict):
+                continue
+                
+            # Required fields
+            if not all(key in element for key in ['question', 'element_type']):
+                continue
+                
+            # Clean up the element
+            cleaned_element = {
+                'question': element.get('question', '').strip(),
+                'element_id': element.get('element_id', ''),
+                'element_type': element.get('element_type', 'input').lower(),
+                'selector': element.get('selector', ''),
+                'options': element.get('options')
+            }
+            
+            # Validate options for select/checkbox/radio elements
+            if cleaned_element['element_type'] in ['select', 'checkbox', 'radio']:
+                if cleaned_element['options'] is None:
+                    cleaned_element['options'] = []
+                elif not isinstance(cleaned_element['options'], list):
+                    cleaned_element['options'] = []
+            else:
+                cleaned_element['options'] = None
+                
+            cleaned.append(cleaned_element)
+        
+        return cleaned
+
+    def _fallback_html_parsing(self, form_html):
+        """Fallback method to parse HTML directly for basic extraction"""
+        try:
+            from bs4 import BeautifulSoup
+            import re
+            
+            soup = BeautifulSoup(form_html, 'html.parser')
+            elements = []
+            
+            # Find all form elements
+            form_elements = soup.find_all(['input', 'select', 'textarea'])
+            
+            for i, element in enumerate(form_elements):
+                # Skip unwanted elements
+                if self._should_skip_element(element):
+                    continue
+                    
+                element_data = self._extract_element_data(element, i)
+                if element_data:
+                    elements.append(element_data)
+            
+            return elements
+            
+        except Exception as e:
+            print(f"❌ Fallback parsing error: {e}")
+            return []
+
+    def _should_skip_element(self, element):
+        """Check if element should be skipped"""
+        # Skip submit buttons, hidden inputs, etc.
+        if element.name == 'input':
+            input_type = element.get('type', '').lower()
+            if input_type in ['submit', 'button', 'hidden', 'reset']:
+                return True
+        
+        # Skip country code dropdowns
+        element_id = element.get('id', '').lower()
+        if 'country' in element_id and 'code' in element_id:
+            return True
+            
+        return False
+
+    def _extract_element_data(self, element, index):
+        """Extract data from a single form element"""
+        try:
+            # Get question text
+            question = self._get_question_text(element)
+            if not question:
+                return None
+                
+            # Get element details
+            element_id = element.get('id', f'element-{index}')
+            element_type = element.name.lower()
+            
+            if element.name == 'input':
+                element_type = element.get('type', 'text').lower()
+                
+            selector = f"#{element_id}" if element_id else f"{element.name}[{index}]"
+            
+            # Extract options for select/checkbox/radio
+            options = None
+            if element.name == 'select':
+                options = self._extract_select_options(element)
+            elif element_type in ['checkbox', 'radio']:
+                options = self._extract_checkbox_radio_options(element)
+                
+            return {
+                'question': question,
+                'element_id': element_id,
+                'element_type': element_type,
+                'selector': selector,
+                'options': options
+            }
+            
+        except Exception as e:
+            print(f"❌ Error extracting element data: {e}")
+            return None
+
+    def _get_question_text(self, element):
+        """Extract question text from element"""
+        # Try to find associated label
+        element_id = element.get('id')
+        if element_id:
+            # Look for label with 'for' attribute
+            label = element.find_previous('label', {'for': element_id})
+            if label:
+                return label.get_text(strip=True)
+        
+        # Try placeholder
+        placeholder = element.get('placeholder')
+        if placeholder and len(placeholder.strip()) > 2:
+            return placeholder.strip()
+        
+        # Try nearby text (look for text in previous siblings)
+        for sibling in element.find_all_previous(['label', 'span', 'div', 'p']):
+            text = sibling.get_text(strip=True)
+            if text and len(text) > 3 and len(text) < 200:
+                return text
+            if len(list(sibling.find_all_previous())) > 10:  # Don't go too far back
+                break
+        
+        return None
+
+    def _extract_select_options(self, select_element):
+        """Extract options from select element"""
+        options = []
+        for option in select_element.find_all('option'):
+            value = option.get('value', '').strip()
+            text = option.get_text(strip=True)
+            
+            # Use text if available, otherwise use value
+            option_text = text if text else value
+            
+            # Skip empty or placeholder options
+            if option_text and option_text.lower() not in ['select an option', 'choose', 'select']:
+                options.append(option_text)
+        
+        return options
+
+    def _extract_checkbox_radio_options(self, element):
+        """Extract options for checkbox/radio groups"""
+        # This is a simplified version - in practice, you'd need to find
+        # all related checkboxes/radios with the same name
+        name = element.get('name')
+        if not name:
+            return []
+        
+        # Find all elements with the same name
+        parent = element.find_parent('form') or element.find_parent('div')
+        if not parent:
+            return []
+        
+        options = []
+        related_elements = parent.find_all('input', {'name': name})
+        
+        for elem in related_elements:
+            # Look for associated label
+            label_text = self._get_question_text(elem)
+            if label_text:
+                options.append(label_text)
+        
+        return options if len(options) > 1 else []

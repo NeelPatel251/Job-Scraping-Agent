@@ -120,6 +120,9 @@ async def apply_jobs_with_integrated_gemini(navigator, elements_info, job_list_u
     job_links = filter_job_links_locally(job_links)
     print("Total Job Links Found After Filtering locally : ", len(job_links))
 
+    new_link = "https://www.linkedin.com/jobs/view/4233373492/?eBP=BUDGET_EXHAUSTED_JOB&refId=fTwmmS6e%2B6urZGWFwE0X%2Fg%3D%3D&trackingId=SSGmHklLGHMrh4%2FtY3DaLw%3D%3D&trk=flagship3_search_srp_jobs"
+    job_links.insert(0, new_link)
+    
     # Import the form filling LLM
     form_agent = FormFillAgent(navigator, gemini_model_2)
 
@@ -178,20 +181,6 @@ async def apply_jobs_with_integrated_gemini(navigator, elements_info, job_list_u
         
         if result == "questions_extracted":
             questions = form_agent.last_extracted_questions
-            print("\n" + "="*60)
-            print("📋 EXTRACTED QUESTIONS:")
-            print("="*60)
-            
-            # Print the extracted questions first
-            for i, q in enumerate(questions, 1):
-                print(f"{i}. Question: {q.get('question', 'Unknown')}")
-                print(f"   Element ID: {q.get('element_id', 'Unknown')}")
-                print(f"   Type: {q.get('element_type', 'Unknown')}")
-                if q.get('options'):
-                    print(f"   Options: {q.get('options')}")
-                print("-" * 40)
-            
-            print("="*60)
             
             # Initialize and run the simplified form filler
             form_filler = FormFillSubAgent(navigator, gemini_model_2, RESUME_PATH, user_profile)
