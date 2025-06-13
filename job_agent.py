@@ -201,6 +201,7 @@ async def apply_jobs_with_integrated_gemini(navigator, elements_info, job_list_u
             for answer in answers:
                 print(f"  - {answer.get('question', 'Unknown')}: {answer.get('value', 'None')}")
 
+            
             form_value_filler = FormValueFillerAgent(navigator, gemini_model_2, RESUME_PATH)
             
             if analysis_result:

@@ -1,3 +1,2 @@
 Minor Mistakes:
     Radio Button, Select from dropdown tools required
-    Not able to recognize Review, Submit Application button
