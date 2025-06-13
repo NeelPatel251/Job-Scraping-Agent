@@ -6,42 +6,133 @@ def create_tools(self, resume_path):
     """Create tools that the LLM can call"""
 
     @tool
-    async def form_fill_tool(element_id: str, value: str, element_type: str = "input") -> str:
+    async def form_fill_tool(element_id: str, value: str, element_type: str = "input", action: str = "fill") -> str:
         """
-        Fills a form element (input, select, textarea) with a given value.
+        Enhanced form filling tool that handles all types of form elements.
 
         Args:
             element_id: The ID attribute of the HTML element to target.
-            value: The value to enter or select.
-            element_type: One of 'input', 'select', or 'textarea'.
+            value: The value to enter, select, or use for action.
+            element_type: One of 'input', 'select', 'textarea', 'radio', 'checkbox'.
+            action: Action to perform - 'fill', 'select', 'check', 'uncheck', 'click'
 
         Returns:
             A success or error message.
         """
         try:
-            print(f"🔧 [FormFillTool] Filling {element_type} with ID: {element_id} → {value}")
+            print(f"🔧 [FormFillTool] {action.upper()} {element_type} with ID: {element_id} → {value}")
             if not await self.check_page_state():
                 return "Error: Page not ready"
 
-            selector = f"#{element_id}"
-            elem = await self.page.query_selector(selector)
+            # Try multiple selector strategies
+            selectors_to_try = [
+                f"#{element_id}",
+                f"[id='{element_id}']",
+                f"[name='{element_id}']",
+                f"[data-test-id='{element_id}']",
+                f"[aria-describedby='{element_id}']"
+            ]
+
+            elem = None
+            for selector in selectors_to_try:
+                try:
+                    elem = await self.page.query_selector(selector)
+                    if elem and await elem.is_visible():
+                        break
+                except:
+                    continue
+
             if not elem:
-                return f"Error: Element with ID '{element_id}' not found"
+                return f"Error: Element with ID '{element_id}' not found or not visible"
 
             await elem.scroll_into_view_if_needed()
-            await elem.click()
+            await asyncio.sleep(0.3)
 
-            if element_type == "select":
-                await self.page.select_option(selector, value)
+            if element_type.lower() == "input" or element_type.lower() == "textarea":
+                # Handle text inputs and textareas
+                await elem.click()
+                await asyncio.sleep(0.2)
+                
+                # Clear existing content first
+                await elem.fill("")
+                await asyncio.sleep(0.1)
+                
+                # Fill with new value
+                await elem.fill(str(value))
+                await asyncio.sleep(0.3)
+                return f"✅ Filled {element_type} '{element_id}' with '{value}'"
+
+            elif element_type.lower() == "select":
+                # Handle dropdown/select elements
+                try:
+                    # Try selecting by value first
+                    await self.page.select_option(f"#{element_id}", value=str(value))
+                    return f"✅ Selected '{value}' in dropdown '{element_id}'"
+                except:
+                    try:
+                        # Try selecting by text content
+                        await self.page.select_option(f"#{element_id}", label=str(value))
+                        return f"✅ Selected '{value}' in dropdown '{element_id}'"
+                    except:
+                        return f"Error: Could not select '{value}' in dropdown '{element_id}'"
+
+            elif element_type.lower() == "radio":
+                # Handle radio buttons
+                if action.lower() == "select" or action.lower() == "click" or action.lower() == "check":
+                    await elem.click()
+                    await asyncio.sleep(0.3)
+                    return f"✅ Selected radio button '{element_id}'"
+                else:
+                    return f"Error: Invalid action '{action}' for radio button"
+
+            elif element_type.lower() == "checkbox":
+                # Handle checkboxes
+                is_checked = await elem.is_checked()
+                
+                if action.lower() == "check" or (action.lower() == "click" and str(value).lower() in ["true", "yes", "1", "on"]):
+                    if not is_checked:
+                        await elem.click()
+                        await asyncio.sleep(0.3)
+                        return f"✅ Checked checkbox '{element_id}'"
+                    else:
+                        return f"✅ Checkbox '{element_id}' was already checked"
+                        
+                elif action.lower() == "uncheck" or (action.lower() == "click" and str(value).lower() in ["false", "no", "0", "off"]):
+                    if is_checked:
+                        await elem.click()
+                        await asyncio.sleep(0.3)
+                        return f"✅ Unchecked checkbox '{element_id}'"
+                    else:
+                        return f"✅ Checkbox '{element_id}' was already unchecked"
+                        
+                elif action.lower() == "toggle":
+                    await elem.click()
+                    await asyncio.sleep(0.3)
+                    new_state = "checked" if not is_checked else "unchecked"
+                    return f"✅ Toggled checkbox '{element_id}' to {new_state}"
+
             else:
-                await elem.fill(value)
-
-            await self.page.wait_for_timeout(300)  # Optional slight delay
-            return f"✅ Filled {element_type} '{element_id}' with '{value}'"
+                # Fallback - try to fill or click based on element type
+                tag_name = await elem.evaluate("el => el.tagName.toLowerCase()")
+                input_type = await elem.get_attribute("type") or ""
+                
+                if tag_name in ["input", "textarea"]:
+                    if input_type.lower() in ["radio", "checkbox"]:
+                        await elem.click()
+                        return f"✅ Clicked {input_type} '{element_id}'"
+                    else:
+                        await elem.fill(str(value))
+                        return f"✅ Filled {tag_name} '{element_id}' with '{value}'"
+                elif tag_name == "select":
+                    await self.page.select_option(f"#{element_id}", value=str(value))
+                    return f"✅ Selected '{value}' in select '{element_id}'"
+                else:
+                    await elem.click()
+                    return f"✅ Clicked element '{element_id}'"
 
         except Exception as e:
-            return f"Error filling form element: {str(e)}"
-
+            return f"Error in form_fill_tool: {str(e)}"
+        
     @tool
     async def click_element(element_type: str, identifier: str, description: str = "", post_click_selector: str = "") -> str:
         """

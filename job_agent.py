@@ -7,6 +7,7 @@ from config import GEMINI_API_KEY, RESUME_PATH
 import re
 from form_fill_agent import FormFillAgent
 from form_fill_sub_agent import FormFillSubAgent
+from Form_Value_Filler_Agent import FormValueFillerAgent
 
 # Two separate LLM instances using Gemini
 gemini_model_1 = ChatGoogleGenerativeAI(
@@ -171,80 +172,8 @@ async def apply_jobs_with_integrated_gemini(navigator, elements_info, job_list_u
 
         await asyncio.sleep(3)  # Wait for page to load
 
-        # --- Use FormFillAgent to handle the entire application process ---
-        # try:
-        #     result = await form_agent.apply_to_job()
-        #     if result == "questions_extracted":
-        #         print(f"✅ Successfully Extracted questions")
-                
-        #         """
-        #         create a new agent here such that :
-        #             A agent which will get resume as input and questions
-        #                 📄 Detected Questions:
-        #                     - {'question': 'First name', 'element_id': 'single-line-text-form-component-formElement-urn-li-jobs-applyformcommon-easyApplyFormElement-4244561447-20130830202-text', 'element_type': 'input', 'selector': '#single-line-text-form-component-formElement-urn-li-jobs-applyformcommon-easyApplyFormElement-4244561447-20130830202-text'}
-        #                     - {'question': 'Last name', 'element_id': 'single-line-text-form-component-formElement-urn-li-jobs-applyformcommon-easyApplyFormElement-4244561447-20130830178-text', 'element_type': 'input', 'selector': '#single-line-text-form-component-formElement-urn-li-jobs-applyformcommon-easyApplyFormElement-4244561447-20130830178-text'}
-        #                     - {'question': 'Mobile phone number', 'element_id': 'single-line-text-form-component-formElement-urn-li-jobs-applyformcommon-easyApplyFormElement-4244561447-20130830162-phoneNumber-nationalNumber', 'element_type': 'input', 'selector': '#single-line-text-form-component-formElement-urn-li-jobs-applyformcommon-easyApplyFormElement-4244561447-20130830162-phoneNumber-nationalNumber'}
-        #                     - {'question': 'Email address', 'element_id': 'text-entity-list-form-component-formElement-urn-li-jobs-applyformcommon-easyApplyFormElement-4244561447-20130830194-multipleChoice', 'element_type': 'select', 'selector': '#text-entity-list-form-component-formElement-urn-li-jobs-applyformcommon-easyApplyFormElement-4244561447-20130830194-multipleChoice'}
-                
-        #             agent have questions with location so first agent will decide answer and then call a tool to fill those values
 
-        #         after filling form, Find Button like Next/Review/Submit Application button
-        #             - If Next button is there, then press it and you will find another form, just repeat the process (It is Red Signal means there is another form)
-        #             - If Review button is there, then press it (It is like Yellow signal means there is no form and you will get Submit Application button after this)
-        #             - If Submit Application button is there, press it and job application is done (Green Signal)
-
-        #         after answering click next button and repeat the process
-        #             - You will find next button 
-        #         also in repeating the process call form_agent.apply_to_job()
-
-        #         create loop in try block here only to complete whole Job apply process
-        #         """
-
-        #     else:
-        #         print(f"⚠️ Application process completed with status: {result}")
-        # except Exception as e:
-        #     print(f"❌ Error during application process: {e}")
-
-
-        user_profile = None   # Questions will be asked to user fro creating profile
-
-        # while True:
-        #     result = await form_agent.apply_to_job()
-            
-        #     if result == "questions_extracted":
-        #         questions = form_agent.last_extracted_questions
-        #         print("\n" + "="*60)
-        #         print("📋 EXTRACTED QUESTIONS:")
-        #         print("="*60)
-                
-        #         # Print the extracted questions first
-        #         for i, q in enumerate(questions, 1):
-        #             print(f"{i}. Question: {q.get('question', 'Unknown')}")
-        #             print(f"   Element ID: {q.get('element_id', 'Unknown')}")
-        #             print(f"   Type: {q.get('element_type', 'Unknown')}")
-        #             if q.get('options'):
-        #                 print(f"   Options: {q.get('options')}")
-        #             print("-" * 40)
-                
-        #         print("="*60)
-                
-        #         # Initialize and run the simplified form filler
-        #         form_filler = FormFillSubAgent(navigator, gemini_model_2, RESUME_PATH, user_profile)
-        #         analysis_result = await form_filler.answer_and_fill(questions)
-                
-        #         if analysis_result:
-        #             print("\n✅ Form analysis completed successfully")
-        #             # Get summary
-        #             summary = await form_filler.get_summary()
-        #             print(f"📊 Summary: {summary}")
-        #         else:
-        #             print("\n❌ Form analysis failed")
-                
-                
-        #     else:
-        #         print("✅ Application completed or no further form questions.")
-        #         break
-
+        user_profile = None   # Questions will be asked to user for creating profile
         result = await form_agent.apply_to_job()
         
         if result == "questions_extracted":
@@ -268,22 +197,24 @@ async def apply_jobs_with_integrated_gemini(navigator, elements_info, job_list_u
             form_filler = FormFillSubAgent(navigator, gemini_model_2, RESUME_PATH, user_profile)
             answers, analysis_result = await form_filler.answer_and_fill(questions)
             
-            if answers:
-                print("\n📋 Generated Answers:")
-                print("="*50)
-                for i, answer in enumerate(answers, 1):
-                    element_id = answer.get('element_id', 'Unknown ID')
-                    value = answer.get('value', 'No value')
-                    question = answer.get('question', 'Unknown question')
-                    print(f"{i}. Question: {question}")
-                    print(f"   Element ID: {element_id}")
-                    print(f"   Answer: {value}")
-                    print("-" * 40)
-            else:
-                print("❌ No answers generated")
+            print("\nAnswers extracted:")
+            for answer in answers:
+                print(f"  - {answer.get('question', 'Unknown')}: {answer.get('value', 'None')}")
 
+            form_value_filler = FormValueFillerAgent(navigator, gemini_model_2, RESUME_PATH)
+            
             if analysis_result:
                 print("\n✅ Form analysis completed successfully")
+                
+                print("\n🤖 Starting automated form filling and submission...")
+                
+                completion_success = await form_value_filler.complete_form_process(answers)
+                
+                if completion_success:
+                    print(f"🎉 Successfully completed application for job #{job_idx + 1}")
+                else:
+                    print(f"❌ Failed to complete application for job #{job_idx + 1}")
+
             else:
                 print("\n❌ Form analysis failed")
             

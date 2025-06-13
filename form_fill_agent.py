@@ -95,9 +95,6 @@ class FormFillAgent:
         questions = await self.extract_questions_only(page_state)
 
         if questions:
-            print("📄 Detected Questions:")
-            for q in questions:
-                print("-", q)
             return "questions_extracted"
 
         print("⚠️ No questions found in form after clicking Easy Apply.")

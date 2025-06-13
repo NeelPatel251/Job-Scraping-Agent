@@ -58,6 +58,11 @@ class FormFillSubAgent:
             • Email fields (e.g., label includes "email")
             • Phone **country code** fields (e.g., dropdowns for country dialing codes)
         - DO NOT skip fields asking for phone numbers or mobile numbers
+        - For multiple choice / radio button fields:
+            • Select the option whose **label best matches or approximates** the answer
+            • Return the **value field** (not the label) in the final JSON
+            • If no perfect match, choose the **closest reasonable match**
+
 
         OUTPUT FORMAT:
         [
@@ -79,11 +84,16 @@ class FormFillSubAgent:
         # Prepare questions data for LLM
         questions_data = []
         for q in questions:
+            element_type = q.get('element_type')
+            
+            # Include options for both 'select' and 'radio'/'multipleChoice' types
+            include_options = element_type in ['select', 'radio', 'multipleChoice']
+            
             questions_data.append({
                 "element_id": q.get('element_id'),
                 "question": q.get('question'),
-                "element_type": q.get('element_type'),
-                "options": q.get('options', []) if q.get('element_type') == 'select' else None
+                "element_type": element_type,
+                "options": q.get('options', []) if include_options else None
             })
 
         human_prompt = HumanMessage(content=json.dumps({
