@@ -340,6 +340,8 @@ class LinkedInJobsNavigator:
                     
                     if action_result == "human_verification":
                         await self.wait_for_human_verification(elements_info)
+                    if action_result == "processing_complete":
+                        break
                     elif action_result in ["tool_executed", "fallback_executed"]:
                         consecutive_errors = 0
                     else:
@@ -360,8 +362,8 @@ class LinkedInJobsNavigator:
             else:
                 print(f"\n🎉 Navigation completed after {step_count} steps!")
             
-            print("Browser will remain open for 60 seconds for inspection...")
-            await asyncio.sleep(60)
+            print("Browser will remain open for some seconds for inspection...")
+            await asyncio.sleep(10)
             
         except KeyboardInterrupt:
             print("\nNavigation interrupted by user")

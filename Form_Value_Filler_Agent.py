@@ -55,7 +55,7 @@ class FormValueFillerAgent:
             ROLE: Form Field Filler Agent
 
             OBJECTIVE:
-            Fill form fields with the provided values using click_element tool.
+            Fill form fields with the provided values using tools.
 
             STRATEGY:
             - Fill one field at a time
@@ -64,7 +64,6 @@ class FormValueFillerAgent:
 
             CONSTRAINTS:
             - Use one tool call per response
-            - Only use click_element tool for filling fields
             - Do NOT attempt to submit or navigate - only fill fields
             - If a field cannot be filled, skip it and continue
         """)
@@ -73,14 +72,23 @@ class FormValueFillerAgent:
             element_id = field.get('element_id')
             question = field.get('question', 'Unknown')
             value = field.get('value')
+            element_type = field.get('element_type', 'input').lower()
             
             print(f"   Filling: '{question}' with value: '{value}'")
+            
             
             human_message = HumanMessage(content=f"""
                 Fill the form field with the following details:
                 - Element ID: {element_id}
                 - Question: {question}
                 - Value to fill: {value}
+                - Element Type: {element_type}
+
+                INSTRUCTIONS:
+                - Use correct tool based on element_type.
+                - For radio buttons, make sure to resolve the input ID before clicking.
+                - For dropdowns (select), ensure value matches available option.
+                - For input/textarea, insert the value directly.
             """)
             
             try:
@@ -89,7 +97,13 @@ class FormValueFillerAgent:
                 if response.tool_calls:
                     tool_call = response.tool_calls[0]
                     tool_name = tool_call['name']
-                    tool_args = tool_call['args']
+                    # tool_args = tool_call['args']
+                    tool_args = {
+                        "element_id": tool_call['args'].get("element_id", field.get("element_id")),
+                        "value": tool_call['args'].get("value", field.get("value")),
+                        "element_type": tool_call['args'].get("element_type", field.get("element_type", "input").lower()),
+                        "action": tool_call['args'].get("action", "fill")
+                    }
                     
                     tool = next((t for t in self.tools if t.name == tool_name), None)
                     if tool:
@@ -139,14 +153,16 @@ class FormValueFillerAgent:
         OBJECTIVE:
         Handle form submission by clicking appropriate buttons in the correct order.
         
-        BUTTON PRIORITY ORDER:
-        1. "Next" button - if present, click it (more questions/pages follow)
-        2. "Review" button - if present, click it (review application)  
-        3. "Submit Application" button - final submission
-        4. "Submit" button - alternative final submission
+        BUTTONS:   
+        1. "Submit Application" or "Submit" button - final submission
+        3. "Review" button - if present, click it (review application)
+        4. "Next" button - if present, click it (more questions/pages follow)
         
         STRATEGY:
-        - Look for buttons in the priority order above
+        - Use a prioritized strategy:
+            1. Click "Submit Application" or "Submit" if present (final submission)
+            2. Otherwise, click "Review" if present (move to final review)
+            3. Otherwise, click "Next" if present (more form steps)
         - Click only ONE button per call
         - Use click_element tool with the EXACT button text as identifier
         - Return the type of button clicked
@@ -165,14 +181,16 @@ class FormValueFillerAgent:
         """)
         
         human_message = HumanMessage(content="""
-        Look for and click the appropriate submission button using EXACT button text:
-        1. First check for button containing "Next" 
-        2. Then check for button containing "Review"
-        3. Finally check for button containing "Submit Application" or "Submit"
-        
-        Use the exact button text as the identifier - NOT numbers or indices.
-        Click only the first available button from this priority list.
+            Based on the available buttons, click the correct one based on the following logic:
+
+            1. If "Submit Application" or "Submit" button is present, click it — the application is complete and ready to submit.
+            2. If "Review" button is present, click it — the form needs a final review before submission.
+            3. If "Next" button is present, click it — there are more steps/questions to complete.
+
+            Click only the FIRST button from this list that appears in the available buttons.
+            You can use the exact text of the button as the identifier or you can match it with these buttons.
         """)
+
         
         try:
             response = await self.model_with_tools.ainvoke([system_message, human_message])
@@ -257,6 +275,21 @@ class FormValueFillerAgent:
                 questions = await form_agent.extract_questions_only(page_state)
 
                 if questions:
+                    print("\n" + "="*60)
+                    print("📋 EXTRACTED QUESTIONS:")
+                    print("="*60)
+                    
+                    # Print the extracted questions first
+                    for i, q in enumerate(questions, 1):
+                        print(f"{i}. Question: {q.get('question', 'Unknown')}")
+                        print(f"   Element ID: {q.get('element_id', 'Unknown')}")
+                        print(f"   Type: {q.get('element_type', 'Unknown')}")
+                        if q.get('options'):
+                            print(f"   Options: {q.get('options')}")
+                        print("-" * 40)
+                    
+                    print("="*60)
+                    
                     result = "questions_extracted"
 
                 if result == "questions_extracted":

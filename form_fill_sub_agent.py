@@ -107,20 +107,30 @@ class FormFillSubAgent:
             Answer: "Yes" (the value field)
 
             INPUT/OUTPUT FORMAT:
+                                      
+            Each answer object in the JSON array must include:
+                - "element_id" (from the question input)
+                - "question" (copied from input)
+                - "value" (the selected or generated answer)
+                - "element_type" (copied from input — input, select, radio, checkbox, textarea, etc.)
+                            
             Input will include questions with their options (if applicable).
             Output ONLY valid JSON array:
             [
-            {
-                "element_id": "form-element-123",
-                "question": "Full Name",
-                "value": "John Doe"
-            },
-            {
-                "element_id": "select-element-456", 
-                "question": "Years of experience",
-                "value": "4-5 years"
-            }
+                {
+                    "element_id": "form-element-123",
+                    "question": "Full Name",
+                    "value": "John Doe",
+                    "element_type": "input"
+                },
+                {
+                    "element_id": "select-element-456",
+                    "question": "Years of experience",
+                    "value": "4-5 years",
+                    "element_type": "select"
+                }
             ]
+
 
             CRITICAL RULES:
             - Output ONLY valid JSON array, no extra text

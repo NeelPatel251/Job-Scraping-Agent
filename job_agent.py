@@ -120,8 +120,8 @@ async def apply_jobs_with_integrated_gemini(navigator, elements_info, job_list_u
     job_links = filter_job_links_locally(job_links)
     print("Total Job Links Found After Filtering locally : ", len(job_links))
 
-    new_link = "https://www.linkedin.com/jobs/view/4233373492/?eBP=BUDGET_EXHAUSTED_JOB&refId=fTwmmS6e%2B6urZGWFwE0X%2Fg%3D%3D&trackingId=SSGmHklLGHMrh4%2FtY3DaLw%3D%3D&trk=flagship3_search_srp_jobs"
-    job_links.insert(0, new_link)
+    # new_link = "https://www.linkedin.com/jobs/view/4235811342/?eBP=BUDGET_EXHAUSTED_JOB&refId=9g57D4jiPpFwQDFSZFeHAw%3D%3D&trackingId=%2F9mE7giSQXVPmR0XOvW5Mw%3D%3D"
+    # job_links.insert(0, new_link)
     
     # Import the form filling LLM
     form_agent = FormFillAgent(navigator, gemini_model_2)
@@ -190,7 +190,6 @@ async def apply_jobs_with_integrated_gemini(navigator, elements_info, job_list_u
             for answer in answers:
                 print(f"  - {answer.get('question', 'Unknown')}: {answer.get('value', 'None')}")
 
-            
             form_value_filler = FormValueFillerAgent(navigator, gemini_model_2, RESUME_PATH)
             
             if analysis_result:

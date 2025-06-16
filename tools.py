@@ -49,6 +49,8 @@ def create_tools(self, resume_path):
             await asyncio.sleep(0.3)
 
             if element_type.lower() == "input" or element_type.lower() == "textarea":
+
+                print("Text input tool called : \n")
                 # Handle text inputs and textareas
                 await elem.click()
                 await asyncio.sleep(0.2)
@@ -63,6 +65,8 @@ def create_tools(self, resume_path):
                 return f"✅ Filled {element_type} '{element_id}' with '{value}'"
 
             elif element_type.lower() == "select":
+
+                print("Dropdown Tool selected : \n")
                 # Handle dropdown/select elements
                 try:
                     # Try selecting by value first
@@ -78,14 +82,36 @@ def create_tools(self, resume_path):
 
             elif element_type.lower() == "radio":
 
+                print("Radio Tool Called : \n")
+
                 from radio import resolve_radio_input_id
-                # 🔁 Resolve actual radio input ID
-                element_id = await resolve_radio_input_id(self, element_id, value)
 
-                print(f"\n Radio ID : {element_id} \n")
+                resolved_id = await resolve_radio_input_id(self, element_id, value)
+                
+                if not resolved_id:
+                    print("Could not resolve radio ID \n")
+                    return f"❌ Could not resolve radio ID for value: '{value}'"
+                
+                element_id = resolved_id
+                print(f"\n🎯 Resolved Radio ID : {element_id}")
 
-                selectors_to_try = [
-                    f"#{element_id}",
+                # ✅ Click label associated with the input
+                label_selector = f'label[for="{element_id}"]'
+                print(f"🔍 Trying label selector: {label_selector}")
+
+                try:
+                    label_elem = await self.page.query_selector(label_selector)
+                    if label_elem and await label_elem.is_visible():
+                        await label_elem.click()
+                        await asyncio.sleep(0.3)
+                        return f"✅ Clicked label for radio button '{value}'"
+                    else:
+                        print("⚠️ Label not found or not visible. Falling back to input.")
+                except Exception as e:
+                    print(f"⚠️ Error locating label: {e}. Falling back to input.")
+
+                # Fallback: Try direct input element (less reliable on LinkedIn)
+                fallback_selectors = [
                     f"[id='{element_id}']",
                     f"[name='{element_id}']",
                     f"[data-test-id='{element_id}']",
@@ -93,27 +119,22 @@ def create_tools(self, resume_path):
                 ]
 
                 elem = None
-                for selector in selectors_to_try:
+                for selector in fallback_selectors:
                     try:
                         elem = await self.page.query_selector(selector)
-                        print(f"\nelem : {elem}\n")
                         if elem and await elem.is_visible():
-                            break
+                            await elem.click()
+                            await asyncio.sleep(0.3)
+                            return f"✅ Clicked input radio button '{value}' (fallback)"
                     except:
                         continue
 
-                if not elem:
-                    return f"Error: Element with ID '{element_id}' not found or not visible"
+                return f"❌ Failed to click radio for value: '{value}'"
 
-                # Handle radio buttons
-                if action.lower() == "select" or action.lower() == "click" or action.lower() == "check":
-                    await elem.click()
-                    await asyncio.sleep(0.3)
-                    return f"✅ Selected radio button '{element_id}'"
-                else:
-                    return f"Error: Invalid action '{action}' for radio button"
 
             elif element_type.lower() == "checkbox":
+
+                print("Checkbox tool called : \n")
                 # Handle checkboxes
                 is_checked = await elem.is_checked()
                 
