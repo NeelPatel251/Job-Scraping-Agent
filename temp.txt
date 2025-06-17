@@ -1,3 +1,0 @@
-Minor Mistakes:
-    Radio Button, Select from dropdown tools is not working
-    if resume question is there, skip (User will upload for first time)

@@ -8,15 +8,16 @@ from utils import extract_text_from_resume
 
 
 class FormFillSubAgent:
-    def __init__(self, navigator, llm_model, resume_path, user_profile=None):
+    def __init__(self, navigator, llm_model, resume_path, user_profile):
         print("🚀 Initializing FormFillSubAgent...")
         self.navigator = navigator
         self.llm_model = llm_model
         self.resume_path = resume_path
-        self.user_profile = user_profile or {}
+        self.user_profile = user_profile 
         
         print(f"📄 Resume path: {resume_path}")
-        print(f"👤 User profile keys: {list(self.user_profile.keys())}")
+        # print(f"👤 User profile keys: {list(self.user_profile.keys())}")
+        print(self.user_profile)
         print("✅ FormFillSubAgent initialized successfully")
 
     async def answer_and_fill(self, questions):
@@ -48,8 +49,8 @@ class FormFillSubAgent:
         
         system_prompt = SystemMessage(content="""
             ROLE: LinkedIn Form Answer Generator
-            OBJECTIVE: Generate accurate answers for form questions using resume data.
-
+            OBJECTIVE: Generate accurate answers for form questions using resume data. If resume does not contain relevant info, use the provided user profile as fallback.
+            
             INSTRUCTIONS:
             - Match resume details to form questions accurately
             - Return JSON array with element_id, question, and value
@@ -77,6 +78,11 @@ class FormFillSubAgent:
             3. For CHECKBOX/RADIO fields with options:
             - Same rules as SELECT fields
             - Choose the single best matching option from the provided array
+
+            4. Fallback Strategy:
+                - If resume text does NOT provide enough info to answer a question:
+                    → Look for a relevant field in the user_profile object.
+                - For example, use "expected_ctc", "preferred_location", or "work_authorization" from user_profile if relevant.
 
             EXAMPLES:
 

@@ -8,6 +8,8 @@ import re
 from form_fill_agent import FormFillAgent
 from form_fill_sub_agent import FormFillSubAgent
 from Form_Value_Filler_Agent import FormValueFillerAgent
+from collect_user_data import load_user_profile, collect_user_profile
+import os
 
 # Two separate LLM instances using Gemini
 gemini_model_1 = ChatGoogleGenerativeAI(
@@ -120,11 +122,24 @@ async def apply_jobs_with_integrated_gemini(navigator, elements_info, job_list_u
     job_links = filter_job_links_locally(job_links)
     print("Total Job Links Found After Filtering locally : ", len(job_links))
 
-    # new_link = "https://www.linkedin.com/jobs/view/4235811342/?eBP=BUDGET_EXHAUSTED_JOB&refId=9g57D4jiPpFwQDFSZFeHAw%3D%3D&trackingId=%2F9mE7giSQXVPmR0XOvW5Mw%3D%3D"
-    # job_links.insert(0, new_link)
-    
     # Import the form filling LLM
     form_agent = FormFillAgent(navigator, gemini_model_2)
+
+
+
+    USER_PROFILE_PATH = "/home/neel/Desktop/HyperLink/Automatic_Job_Selection/Linked_IN/Agents/user_profile.json"
+    if not os.path.exists(USER_PROFILE_PATH):
+        print("👤 No user profile found. Let's create one...")
+        collect_user_profile()
+    else:
+        flag = input("🛠️ User profile exists. Do you want to update it? (Yes/No): ").strip().lower()
+        if flag in ["yes", "y"]:
+            collect_user_profile()
+    user_profile = load_user_profile()
+    print("✅ User profile loaded.")
+
+    print(f"👤 User profile keys: {list(user_profile.keys())}")
+
 
     for job_idx, job_link in enumerate(job_links):
         print(f"\n➡️ Processing job #{job_idx + 1}: {job_link}")
@@ -175,8 +190,7 @@ async def apply_jobs_with_integrated_gemini(navigator, elements_info, job_list_u
 
         await asyncio.sleep(3)  # Wait for page to load
 
-
-        user_profile = None   # Questions will be asked to user for creating profile
+        
         result = await form_agent.apply_to_job()
         
         if result == "questions_extracted":
@@ -185,10 +199,6 @@ async def apply_jobs_with_integrated_gemini(navigator, elements_info, job_list_u
             # Initialize and run the simplified form filler
             form_filler = FormFillSubAgent(navigator, gemini_model_2, RESUME_PATH, user_profile)
             answers, analysis_result = await form_filler.answer_and_fill(questions)
-            
-            print("\nAnswers extracted:")
-            for answer in answers:
-                print(f"  - {answer.get('question', 'Unknown')}: {answer.get('value', 'None')}")
 
             form_value_filler = FormValueFillerAgent(navigator, gemini_model_2, RESUME_PATH)
             

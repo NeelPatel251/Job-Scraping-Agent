@@ -324,8 +324,6 @@ class LinkedInJobsNavigator:
                         "Do not ask the user for any inputs. Use tools for all actions."
                     )
 
-
-
                     print("")
                     print("Current Step", self.current_step)
 

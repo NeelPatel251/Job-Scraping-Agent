@@ -3,6 +3,7 @@ import json
 from langchain_core.messages import HumanMessage, SystemMessage
 from tools import create_tools
 from form_fill_agent import FormFillAgent
+import os
 
 class FormValueFillerAgent:
     def __init__(self, navigator, llm_model, resume_path):
@@ -12,39 +13,105 @@ class FormValueFillerAgent:
         self.tools = create_tools(navigator, resume_path)
         self.model_with_tools = llm_model.bind_tools(self.tools)
         
+    # async def fill_form_values(self, answers):
+    #     """
+    #     Fill form values based on extracted answers
+    #     Returns: success status and any remaining unfilled fields
+    #     """
+    #     print("\n🔄 Starting form value filling process...")
+        
+    #     # Separate fields with values from those without
+    #     fields_with_values = [answer for answer in answers if answer.get('value') is not None]
+    #     fields_without_values = [answer for answer in answers if answer.get('value') is None]
+        
+    #     print(f"📝 Fields with values: {len(fields_with_values)}")
+    #     print(f"❓ Fields without values: {len(fields_without_values)}")
+        
+    #     # First, fill all fields that have values
+    #     if fields_with_values:
+    #         success = await self._fill_fields_with_values(fields_with_values)
+    #         if not success:
+    #             return False, fields_without_values
+        
+    #     # Handle fields without values (user intervention required)
+    #     if fields_without_values:
+    #         print("\n⚠️ Some fields require manual input:")
+    #         for field in fields_without_values:
+    #             print(f"   - {field.get('question', 'Unknown question')}")
+    #             print(f"     Element ID: {field.get('element_id', 'Unknown')}")
+            
+    #         print("\n🛑 AUTOMATION PAUSED")
+    #         print("Please manually fill the remaining fields in the browser.")
+    #         input("Press Enter when you have filled all the required fields to continue...")
+    #         print("▶️ Resuming automation...")
+        
+    #     return True, []
+
+
     async def fill_form_values(self, answers):
         """
         Fill form values based on extracted answers
         Returns: success status and any remaining unfilled fields
         """
         print("\n🔄 Starting form value filling process...")
-        
-        # Separate fields with values from those without
-        fields_with_values = [answer for answer in answers if answer.get('value') is not None]
-        fields_without_values = [answer for answer in answers if answer.get('value') is None]
-        
+
+        # Load user profile
+        user_profile_path = "/home/neel/Desktop/HyperLink/Automatic_Job_Selection/Linked_IN/Agents/user_profile.json"
+        if not os.path.exists(user_profile_path):
+            print("❌ user_profile.json not found!")
+            return False, []
+
+        with open(user_profile_path, "r") as f:
+            user_profile = json.load(f)
+
+        resume_uploaded = user_profile.get("resume_uploaded", False)
+
+        # Detect resume-related fields
+        upload_related = lambda q: q and ("upload" in q.lower() or "resume" in q.lower())
+
+        resume_fields = [f for f in answers if upload_related(f.get("question"))]
+
+        # Manually handle resume upload if not already uploaded
+        if resume_fields and not resume_uploaded:
+            print("\n📄 Detected resume upload field(s).")
+            print("Please upload your resume manually in the browser.")
+            input("⏸️ Press Enter after you've uploaded the resume to continue...")
+
+            # ✅ Mark resume as uploaded in user_profile
+            user_profile["resume_uploaded"] = True
+            with open(user_profile_path, "w") as f:
+                json.dump(user_profile, f, indent=2)
+            print("✅ Resume upload recorded in user_profile.json")
+
+        # Remove all resume-related fields from processing
+        filtered_answers = [f for f in answers if not upload_related(f.get("question"))]
+
+        # Separate filled and unfilled fields
+        fields_with_values = [f for f in filtered_answers if f.get("value") is not None]
+        fields_without_values = [f for f in filtered_answers if f.get("value") is None]
+
         print(f"📝 Fields with values: {len(fields_with_values)}")
         print(f"❓ Fields without values: {len(fields_without_values)}")
-        
-        # First, fill all fields that have values
+
+        # Fill fields with values
         if fields_with_values:
             success = await self._fill_fields_with_values(fields_with_values)
             if not success:
                 return False, fields_without_values
-        
-        # Handle fields without values (user intervention required)
+
+        # Handle any remaining unfilled fields
         if fields_without_values:
             print("\n⚠️ Some fields require manual input:")
             for field in fields_without_values:
                 print(f"   - {field.get('question', 'Unknown question')}")
                 print(f"     Element ID: {field.get('element_id', 'Unknown')}")
-            
+
             print("\n🛑 AUTOMATION PAUSED")
             print("Please manually fill the remaining fields in the browser.")
-            input("Press Enter when you have filled all the required fields to continue...")
-            print("▶️ Resuming automation...")
-        
+            input("▶️ Press Enter to resume automation after manual input...")
+
         return True, []
+
     
     async def _fill_fields_with_values(self, fields_with_values):
         """Fill fields that have predetermined values"""
@@ -298,7 +365,9 @@ class FormValueFillerAgent:
                     
                     # Use FormFillSubAgent to get answers for new questions
                     from form_fill_sub_agent import FormFillSubAgent
-                    form_filler = FormFillSubAgent(self.navigator, self.llm_model, self.resume_path, None)
+                    from collect_user_data import load_user_profile
+                    user_profile = load_user_profile()
+                    form_filler = FormFillSubAgent(self.navigator, self.llm_model, self.resume_path, user_profile)
                     answers, analysis_result = await form_filler.answer_and_fill(questions)
                     
                     current_answers = answers
